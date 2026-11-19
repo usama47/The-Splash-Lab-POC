@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, errMessage } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 
 type Process = {
   id: string;
@@ -35,45 +36,47 @@ export default function ProcessesPage() {
 
   return (
     <div className="stack">
-      <div>
-        <h1 style={{ margin: 0 }}>Process Register</h1>
-        <p className="muted">Baseline mapping for the 50% admin-work reduction ambition.</p>
-      </div>
+      <PageHeader
+        title="Process Register"
+        lede="Baseline mapping for the ambition to cut routine admin work by 50% — hours by Automate / Accelerate / Elevate."
+      />
       {error && <div className="error">{error}</div>}
       <div className="grid-cards">
         {summary.map((s) => (
           <div className="stat" key={s.classification}>
-            <div className="label">{s.classification} ({s.processCount})</div>
+            <div className="label">{s.classification} · {s.processCount} processes</div>
             <div className="value">{s.totalHoursPerWeek}h</div>
-            <div className="muted">est. weekly hours</div>
+            <div className="muted" style={{ fontSize: "0.8rem", marginTop: 4 }}>est. weekly hours</div>
           </div>
         ))}
       </div>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Process</th><th>Dept</th><th>Region</th><th>Owner</th><th>Frequency</th>
-            <th>Hours/wk</th><th>Systems</th><th>Pain</th><th>Class</th><th>Opportunity</th><th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((p) => (
-            <tr key={p.id}>
-              <td>{p.processName}</td>
-              <td>{p.department}</td>
-              <td>{p.region}</td>
-              <td>{p.ownerName}</td>
-              <td>{p.frequency}</td>
-              <td>{p.estimatedHoursPerWeek}</td>
-              <td>{p.systemsUsed}</td>
-              <td>{p.painScore}</td>
-              <td>{p.classification}</td>
-              <td>{p.opportunityForImprovement}</td>
-              <td>{p.currentStatus}</td>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Process</th><th>Dept</th><th>Region</th><th>Owner</th><th>Frequency</th>
+              <th>Hours/wk</th><th>Systems</th><th>Pain</th><th>Class</th><th>Opportunity</th><th>Status</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map((p) => (
+              <tr key={p.id}>
+                <td><strong>{p.processName}</strong></td>
+                <td>{p.department}</td>
+                <td>{p.region}</td>
+                <td>{p.ownerName}</td>
+                <td>{p.frequency}</td>
+                <td>{p.estimatedHoursPerWeek}</td>
+                <td>{p.systemsUsed}</td>
+                <td><span className={`badge ${p.painScore >= 4 ? "needs" : "neutral"}`}>{p.painScore}/5</span></td>
+                <td><span className="badge sim">{p.classification}</span></td>
+                <td>{p.opportunityForImprovement}</td>
+                <td>{p.currentStatus}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

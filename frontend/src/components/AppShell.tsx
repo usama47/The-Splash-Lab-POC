@@ -7,16 +7,16 @@ import { api, getDemoUserId, setDemoUserId } from "@/lib/api";
 import styles from "./AppShell.module.css";
 
 const NAV = [
-  { href: "/", label: "Dashboard" },
-  { href: "/meetings", label: "Meetings" },
-  { href: "/review", label: "Review Queue" },
-  { href: "/commitments", label: "Commitments and Tasks" },
-  { href: "/decisions", label: "Decisions" },
-  { href: "/issues", label: "Issues" },
-  { href: "/knowledge", label: "Knowledge" },
-  { href: "/processes", label: "Process Register" },
-  { href: "/audit", label: "Audit Log" },
-  { href: "/integrations", label: "Integration Settings" },
+  { href: "/", label: "Dashboard", icon: "◈", section: "Overview" },
+  { href: "/meetings", label: "Meetings", icon: "◎", section: "Workflow" },
+  { href: "/review", label: "Review Queue", icon: "✓", section: "Workflow" },
+  { href: "/commitments", label: "Commitments and Tasks", icon: "▣", section: "Registers" },
+  { href: "/decisions", label: "Decisions", icon: "◆", section: "Registers" },
+  { href: "/issues", label: "Issues", icon: "⚠", section: "Registers" },
+  { href: "/knowledge", label: "Knowledge", icon: "☰", section: "Registers" },
+  { href: "/processes", label: "Process Register", icon: "▦", section: "Registers" },
+  { href: "/audit", label: "Audit Log", icon: "◉", section: "Governance" },
+  { href: "/integrations", label: "Integration Settings", icon: "⬡", section: "Governance" },
 ];
 
 type UserInfo = {
@@ -40,27 +40,36 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.location.reload();
   }
 
+  let lastSection = "";
+
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
+          <div className={styles.brandMark}>SL</div>
           <div className={styles.brandName}>The Splash Lab</div>
-          <div className={styles.brandSub}>AI & Business Systems Foundation</div>
+          <div className={styles.brandSub}>AI &amp; Business Systems Foundation</div>
         </div>
         <nav className={styles.nav}>
           {NAV.map((item) => {
+            const showSection = item.section !== lastSection;
+            lastSection = item.section;
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             return (
-              <Link key={item.href} href={item.href} className={active ? styles.active : undefined}>
-                {item.label}
-              </Link>
+              <div key={item.href}>
+                {showSection && <div className={styles.navSection}>{item.section}</div>}
+                <Link href={item.href} className={active ? styles.active : undefined}>
+                  <span className={styles.navIcon}>{item.icon}</span>
+                  {item.label}
+                </Link>
+              </div>
             );
           })}
         </nav>
         <div className={styles.demoBox}>
           <div className={styles.demoTitle}>Local demo identity</div>
           <p className={styles.demoNote}>
-            Not Microsoft Entra. Switch roles for local RBAC demonstration only.
+            Not Microsoft Entra. Switch roles only for this local RBAC demonstration.
           </p>
           <select value={userId} onChange={(e) => onSwitch(e.target.value)} aria-label="Demo user">
             {(users?.users || [
@@ -75,18 +84,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </select>
           {users?.current && (
             <div className={styles.current}>
-              Signed in as <strong>{users.current.displayName}</strong> · {users.current.role}
+              Signed in as <strong>{users.current.displayName}</strong>
+              <br />
+              {users.current.role} · Operations pilot
             </div>
           )}
         </div>
       </aside>
       <main className={styles.main}>
         <header className={styles.top}>
-          <div>
-            <div className={styles.mode}>MODE A — Local demo · Simulated integrations</div>
+          <div className={styles.mode}>
+            <span className={styles.modeDot} />
+            MODE A — Local demo · Simulated integrations
           </div>
+          <div className={styles.topMeta}>Pilot department: Operations</div>
         </header>
-        <div className={styles.content}>{children}</div>
+        <div className={`${styles.content} page-enter`}>{children}</div>
       </main>
     </div>
   );

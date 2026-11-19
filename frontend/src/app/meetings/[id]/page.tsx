@@ -3,6 +3,8 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { DraftItem, MeetingDetail, api, errMessage } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
+import Link from "next/link";
 
 type Editable = {
   summary: string;
@@ -45,7 +47,7 @@ export default function MeetingDetailPage() {
     try {
       await api.post(`/api/meetings/${id}/generate-draft`);
       await load();
-      setMessage(`Draft generated via ${meeting?.draft?.providerName || "AI provider"} (suggestions only — not published).`);
+      setMessage("Draft generated in demo AI mode (suggestions only — not published until you approve).");
     } catch (e: unknown) { setError(errMessage(e)); }
     finally { setBusy(false); }
   }
@@ -149,18 +151,22 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="stack">
-      <div>
-        <h1 style={{ margin: 0 }}>{meeting.title}</h1>
-        <p className="muted">
-          {meeting.department} · {new Date(meeting.meetingDate).toLocaleString()} · {meeting.organizer} ·{" "}
-          <span className="badge sim">{meeting.source}</span> · Status: {meeting.workflowStatus}
-        </p>
-      </div>
+      <PageHeader
+        title={meeting.title}
+        lede={`${meeting.department} · ${new Date(meeting.meetingDate).toLocaleString()} · ${meeting.organizer}`}
+        actions={
+          <>
+            <span className="badge sim">{meeting.source}</span>
+            <span className="badge neutral">{meeting.workflowStatus.replace(/([a-z])([A-Z])/g, "$1 $2")}</span>
+            <Link className="link-btn" href="/meetings">← Meetings</Link>
+          </>
+        }
+      />
       {error && <div className="error">{error}</div>}
       {message && <div className="notice">{message}</div>}
 
       <div className="panel">
-        <h2 style={{ marginTop: 0, fontSize: "1rem" }}>Source transcript</h2>
+        <h2 className="panel-title">Source transcript</h2>
         <div className="transcript">{meeting.transcript}</div>
         <div className="form-actions">
           <button className="primary" disabled={busy || meeting.draft?.isPublished} onClick={generate}>
@@ -174,7 +180,12 @@ export default function MeetingDetailPage() {
         <div className="panel stack">
           <div className="row" style={{ justifyContent: "space-between" }}>
             <h2 style={{ margin: 0, fontSize: "1rem" }}>
-              Human review {meeting.draft?.providerName && <span className="badge ai">Provider: {meeting.draft.providerName}</span>}
+              Human review{" "}
+              {meeting.draft?.providerName && (
+                <span className="badge ai">
+                  {meeting.draft.providerName === "MockAi" ? "Demo AI (simulated)" : `AI: ${meeting.draft.providerName}`}
+                </span>
+              )}
             </h2>
             {meeting.draft?.isPublished && <span className="badge approved">Published</span>}
           </div>

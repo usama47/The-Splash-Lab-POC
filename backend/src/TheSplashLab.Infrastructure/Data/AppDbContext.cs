@@ -23,6 +23,12 @@ public class AppDbContext : DbContext
     public DbSet<AuditLogEntry> AuditLogs => Set<AuditLogEntry>();
     public DbSet<IntegrationSetting> IntegrationSettings => Set<IntegrationSetting>();
 
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<Guid>().HaveConversion<GuidUpperStringConverter>();
+        configurationBuilder.Properties<Guid?>().HaveConversion<NullableGuidUpperStringConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Meeting>()

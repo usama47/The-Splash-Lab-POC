@@ -487,26 +487,36 @@ public class MeetingWorkflowService
 
     public async Task<CommitmentRecord> UpdateCommitmentStatusAsync(Guid commitmentId, UpdateCommitmentStatusRequest request, CancellationToken ct = default)
     {
-        if (!Enum.TryParse<CommitmentStatus>(request.Status, true, out var status))
+        if (!Enum.TryParse<CommitmentStatus>(request.Status, true, out var requested))
             throw new ArgumentException("Invalid commitment status.");
 
         var commitment = await _db.Commitments
-            .Include(c => c.StatusHistory)
             .FirstOrDefaultAsync(c => c.Id == commitmentId, ct)
             ?? throw new InvalidOperationException("Commitment not found.");
 
         var from = commitment.Status;
-        commitment.Status = status;
-        if (status is not CommitmentStatus.Completed and not CommitmentStatus.Cancelled)
-            commitment.Status = CommitmentStatusHelper.ComputeStatus(commitment);
 
+        // Honor explicit reviewer actions. Overdue is only auto-applied for Open.
+        CommitmentStatus next = requested switch
+        {
+            CommitmentStatus.Completed or CommitmentStatus.Cancelled or CommitmentStatus.InProgress => requested,
+            CommitmentStatus.Overdue => CommitmentStatus.Overdue,
+            _ => CommitmentStatusHelper.ComputeStatus(new CommitmentRecord
+            {
+                DueDate = commitment.DueDate,
+                Status = CommitmentStatus.Open
+            })
+        };
+
+        commitment.Status = next;
         commitment.UpdatedAtUtc = DateTime.UtcNow;
-        commitment.StatusHistory.Add(new CommitmentStatusHistory
+
+        _db.CommitmentStatusHistories.Add(new CommitmentStatusHistory
         {
             Id = Guid.NewGuid(),
             CommitmentId = commitment.Id,
             FromStatus = from,
-            ToStatus = commitment.Status,
+            ToStatus = next,
             ChangedBy = _user.DisplayName,
             Note = request.Note ?? string.Empty,
             ChangedAtUtc = DateTime.UtcNow
@@ -515,7 +525,7 @@ public class MeetingWorkflowService
         await _db.SaveChangesAsync(ct);
         await _audit.RecordAsync(
             _user.DisplayName, _user.UserId, "UpdateCommitmentStatus", "Commitment", commitment.Id.ToString(),
-            commitment.MeetingId, from.ToString(), commitment.Status.ToString(), true, null, ct);
+            commitment.MeetingId, from.ToString(), next.ToString(), true, null, ct);
 
         return commitment;
     }

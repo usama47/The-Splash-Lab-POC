@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MeetingSummary, api, errMessage } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function ReviewQueuePage() {
   const [items, setItems] = useState<MeetingSummary[]>([]);
@@ -16,29 +17,34 @@ export default function ReviewQueuePage() {
 
   return (
     <div className="stack">
-      <div>
-        <h1 style={{ margin: 0 }}>Review Queue</h1>
-        <p className="muted">Drafts awaiting reviewer approval before they enter official registers.</p>
-      </div>
+      <PageHeader
+        title="Review Queue"
+        lede="Drafts waiting for reviewer approval before they enter official registers or the task destination."
+      />
       {error && <div className="error">{error}</div>}
-      <table className="table">
-        <thead>
-          <tr><th>Meeting</th><th>Status</th><th>Scenario</th><th></th></tr>
-        </thead>
-        <tbody>
-          {items.length === 0 && (
-            <tr><td colSpan={4} className="muted">No drafts waiting. Generate a draft from Meetings.</td></tr>
-          )}
-          {items.map((m) => (
-            <tr key={m.id}>
-              <td>{m.title}</td>
-              <td>{m.workflowStatus}</td>
-              <td>{m.scenarioKey}</td>
-              <td><Link href={`/meetings/${m.id}`}>Review</Link></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {items.length === 0 ? (
+        <div className="empty">
+          No drafts waiting. Generate a draft from <Link href="/meetings">Meetings</Link> to populate this queue.
+        </div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr><th>Meeting</th><th>Status</th><th>Scenario</th><th></th></tr>
+            </thead>
+            <tbody>
+              {items.map((m) => (
+                <tr key={m.id}>
+                  <td><strong>{m.title}</strong></td>
+                  <td><span className="badge needs">{m.workflowStatus.replace(/([a-z])([A-Z])/g, "$1 $2")}</span></td>
+                  <td><span className="badge neutral">{m.scenarioKey}</span></td>
+                  <td><Link className="link-btn" href={`/meetings/${m.id}`}>Review →</Link></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

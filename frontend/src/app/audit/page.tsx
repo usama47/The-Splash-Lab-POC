@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, errMessage } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 
 type Audit = {
   id: string;
@@ -27,37 +28,39 @@ export default function AuditPage() {
 
   return (
     <div className="stack">
-      <div>
-        <h1 style={{ margin: 0 }}>Audit Log</h1>
-        <p className="muted">Append-only. Credentials and tokens are never logged.</p>
-      </div>
+      <PageHeader
+        title="Audit Log"
+        lede="Append-only history of who did what, when, and whether it succeeded. Credentials and tokens are never logged."
+      />
       {error && <div className="error">{error}</div>}
-      <table className="table">
-        <thead>
-          <tr>
-            <th>When (UTC)</th><th>Actor</th><th>Action</th><th>Entity</th><th>Meeting</th><th>Result</th><th>Details</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((a) => (
-            <tr key={a.id}>
-              <td>{new Date(a.occurredAtUtc).toLocaleString()}</td>
-              <td>{a.actorName}</td>
-              <td>{a.action}</td>
-              <td>{a.entityType} {a.entityId ? `· ${a.entityId.slice(0, 8)}` : ""}</td>
-              <td>{a.meetingId ? a.meetingId.slice(0, 8) : "—"}</td>
-              <td>
-                <span className={`badge ${a.succeeded ? "approved" : "rejected"}`}>
-                  {a.succeeded ? "Succeeded" : "Failed"}
-                </span>
-              </td>
-              <td style={{ maxWidth: 320, fontSize: "0.8rem" }}>
-                {a.failureReason || a.afterValues || a.beforeValues || "—"}
-              </td>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>When (UTC)</th><th>Actor</th><th>Action</th><th>Entity</th><th>Meeting</th><th>Result</th><th>Details</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map((a) => (
+              <tr key={a.id}>
+                <td>{new Date(a.occurredAtUtc).toLocaleString()}</td>
+                <td>{a.actorName}</td>
+                <td><strong>{a.action}</strong></td>
+                <td>{a.entityType}{a.entityId ? ` · ${a.entityId.slice(0, 8)}` : ""}</td>
+                <td>{a.meetingId ? a.meetingId.slice(0, 8) : "—"}</td>
+                <td>
+                  <span className={`badge ${a.succeeded ? "approved" : "rejected"}`}>
+                    {a.succeeded ? "Succeeded" : "Failed"}
+                  </span>
+                </td>
+                <td style={{ maxWidth: 340, fontSize: "0.82rem" }}>
+                  {a.failureReason || a.afterValues || a.beforeValues || "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

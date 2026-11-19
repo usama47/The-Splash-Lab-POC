@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, errMessage } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 
 type Decision = {
   id: string;
@@ -24,28 +25,31 @@ export default function DecisionsPage() {
 
   return (
     <div className="stack">
-      <div>
-        <h1 style={{ margin: 0 }}>Decisions Register</h1>
-        <p className="muted">Only human-approved decisions appear here.</p>
-      </div>
+      <PageHeader title="Decisions Register" lede="Only human-approved decisions become official records." />
       {error && <div className="error">{error}</div>}
-      <table className="table">
-        <thead>
-          <tr><th>Decision</th><th>Context</th><th>Meeting</th><th>Approver</th><th>Date</th><th>Status</th></tr>
-        </thead>
-        <tbody>
-          {items.map((d) => (
-            <tr key={d.id}>
-              <td>{d.statement}</td>
-              <td>{d.context}</td>
-              <td>{d.meetingTitle || "—"}</td>
-              <td>{d.approverName}</td>
-              <td>{new Date(d.decisionDateUtc).toLocaleString()}</td>
-              <td><span className="badge approved">{d.isApproved ? "Approved" : "Draft"}</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {items.length === 0 ? (
+        <div className="empty">No approved decisions yet.</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr><th>Decision</th><th>Context</th><th>Meeting</th><th>Approver</th><th>Date</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {items.map((d) => (
+                <tr key={d.id}>
+                  <td><strong>{d.statement}</strong></td>
+                  <td>{d.context}</td>
+                  <td>{d.meetingTitle || "—"}</td>
+                  <td>{d.approverName}</td>
+                  <td>{new Date(d.decisionDateUtc).toLocaleString()}</td>
+                  <td><span className="badge approved">{d.isApproved ? "Approved" : "Draft"}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

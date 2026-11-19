@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { MeetingSummary, api, errMessage } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function MeetingsPage() {
   const [meetings, setMeetings] = useState<MeetingSummary[]>([]);
@@ -62,65 +63,78 @@ export default function MeetingsPage() {
 
   return (
     <div className="stack">
-      <div>
-        <h1 style={{ margin: 0 }}>Meetings</h1>
-        <p className="muted">Pilot department: Operations. Source transcripts are simulated Teams content unless uploaded.</p>
-      </div>
+      <PageHeader
+        title="Meetings"
+        lede="Pilot department: Operations. Use the three seeded scenarios for the live walkthrough, or paste/upload a transcript."
+      />
       {error && <div className="error">{error}</div>}
-      <div className="panel">
-        <h2 style={{ marginTop: 0, fontSize: "1rem" }}>Sample / uploaded meetings</h2>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Date</th>
-              <th>Scenario</th>
-              <th>Source</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {meetings.map((m) => (
-              <tr key={m.id}>
-                <td>{m.title}</td>
-                <td>{new Date(m.meetingDate).toLocaleDateString()}</td>
-                <td><span className="badge">{m.scenarioKey || "uploaded"}</span></td>
-                <td>{m.source}</td>
-                <td>{m.workflowStatus}</td>
-                <td><Link href={`/meetings/${m.id}`}>Open</Link></td>
+      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "1rem 1.1rem 0.5rem" }}>
+          <h2 className="panel-title" style={{ marginBottom: "0.35rem" }}>Sample & uploaded meetings</h2>
+          <p className="muted" style={{ margin: 0, fontSize: "0.88rem" }}>
+            Scenario badges: <span className="badge sim">complete</span>{" "}
+            <span className="badge needs">ambiguous</span>{" "}
+            <span className="badge rejected">fail-destination</span>{" "}
+            <span className="badge approved">prior-published</span>
+          </p>
+        </div>
+        <div className="table-wrap" style={{ border: "none", borderRadius: 0, boxShadow: "none" }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Date</th>
+                <th>Scenario</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {meetings.map((m) => (
+                <tr key={m.id}>
+                  <td><strong>{m.title}</strong></td>
+                  <td>{new Date(m.meetingDate).toLocaleDateString()}</td>
+                  <td><span className="badge neutral">{m.scenarioKey || "uploaded"}</span></td>
+                  <td>{m.source}</td>
+                  <td><span className="badge sim">{m.workflowStatus.replace(/([a-z])([A-Z])/g, "$1 $2")}</span></td>
+                  <td><Link className="link-btn" href={`/meetings/${m.id}`}>Open →</Link></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div className="panel">
-        <h2 style={{ marginTop: 0, fontSize: "1rem" }}>Paste transcript</h2>
-        <form onSubmit={onPaste}>
-          <div className="form-row">
-            <label>Title</label>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          <div className="form-row">
-            <label>Organizer</label>
-            <input value={organizer} onChange={(e) => setOrganizer(e.target.value)} />
-          </div>
-          <div className="form-row">
-            <label>Transcript</label>
-            <textarea rows={8} value={transcript} onChange={(e) => setTranscript(e.target.value)} required minLength={20} />
-          </div>
-          <button className="primary" type="submit">Create meeting</button>
-        </form>
-      </div>
-      <div className="panel">
-        <h2 style={{ marginTop: 0, fontSize: "1rem" }}>Upload .txt transcript</h2>
-        <form onSubmit={onUpload}>
-          <div className="form-row">
-            <label>File</label>
-            <input type="file" accept=".txt,text/plain" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-          </div>
-          <button className="primary" type="submit">Upload</button>
-        </form>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "0.9rem" }}>
+        <div className="panel">
+          <h2 className="panel-title">Paste transcript</h2>
+          <form onSubmit={onPaste}>
+            <div className="form-row">
+              <label>Title</label>
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Meeting title" />
+            </div>
+            <div className="form-row">
+              <label>Organizer</label>
+              <input value={organizer} onChange={(e) => setOrganizer(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>Transcript</label>
+              <textarea rows={7} value={transcript} onChange={(e) => setTranscript(e.target.value)} required minLength={20} placeholder="Paste meeting notes…" />
+            </div>
+            <button className="primary" type="submit">Create meeting</button>
+          </form>
+        </div>
+        <div className="panel">
+          <h2 className="panel-title">Upload .txt transcript</h2>
+          <form onSubmit={onUpload}>
+            <div className="form-row">
+              <label>File</label>
+              <input type="file" accept=".txt,text/plain" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            </div>
+            <p className="muted" style={{ fontSize: "0.85rem" }}>Max 200KB. Empty files are rejected.</p>
+            <button className="primary" type="submit">Upload</button>
+          </form>
+        </div>
       </div>
     </div>
   );

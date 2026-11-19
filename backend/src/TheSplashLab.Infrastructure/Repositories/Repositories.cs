@@ -205,6 +205,10 @@ public static class CommitmentStatusHelper
 
     public static void RefreshOverdue(CommitmentRecord c)
     {
+        // Do not overwrite explicit In Progress / Completed / Cancelled for the follow-up UI.
+        if (c.Status is CommitmentStatus.Completed or CommitmentStatus.Cancelled or CommitmentStatus.InProgress)
+            return;
+
         var computed = ComputeStatus(c);
         if (computed == CommitmentStatus.Overdue)
             c.Status = CommitmentStatus.Overdue;

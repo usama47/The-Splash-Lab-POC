@@ -27,46 +27,53 @@ public class MockAiExtractionService : IAiExtractionService
         return Task.FromResult(result);
     }
 
-    private static AiExtractionPayload CompletePayload() => new()
+    private static AiExtractionPayload CompletePayload()
     {
-        Summary = "Operations and Sales aligned on Riverside sample and quotation follow-up. Matte black samples will be sent and the quotation will be revised.",
-        DiscussionPoints = new List<string>
+        // Relative dates keep the live demo showing Open + one near-term item instead of everything Overdue.
+        var sampleDue = DateTime.UtcNow.Date.AddDays(5);
+        var quoteDue = DateTime.UtcNow.Date.AddDays(-1); // deliberately overdue for dashboard metric
+
+        return new()
         {
-            "Riverside architect requested matte black finish samples.",
-            "Revised quotation needed for updated finish pricing.",
-            "No open blockers from operations."
-        },
-        Decisions = new List<AiDecisionPayload>
-        {
-            new()
+            Summary = "Operations and Sales aligned on Riverside sample and quotation follow-up. Matte black samples will be sent and the quotation will be revised.",
+            DiscussionPoints = new List<string>
             {
-                Statement = "Send matte black finish samples for the Riverside project.",
-                Context = "Architect requested matte black finish samples and a revised quotation.",
-                SourceEvidence = "Decision confirmed: Send matte black finish samples for the Riverside project.",
-                NeedsReview = false
-            }
-        },
-        Commitments = new List<AiCommitmentPayload>
-        {
-            new()
-            {
-                Action = "Prepare and courier the matte black sample pack to the Riverside project architect.",
-                SuggestedOwner = "Alex Morgan",
-                SuggestedDueDate = "2026-11-17",
-                SourceEvidence = "Owner is Alex Morgan. Due date is 17 November 2026.",
-                NeedsReview = false
+                "Riverside architect requested matte black finish samples.",
+                "Revised quotation needed for updated finish pricing.",
+                "No open blockers from operations."
             },
-            new()
+            Decisions = new List<AiDecisionPayload>
             {
-                Action = "Update the quotation with revised finish pricing and send it to the architect.",
-                SuggestedOwner = "Priya Shah",
-                SuggestedDueDate = "2026-11-14",
-                SourceEvidence = "Owner is Priya Shah. Due date is 14 November 2026.",
-                NeedsReview = false
-            }
-        },
-        OpenIssues = new List<AiIssuePayload>()
-    };
+                new()
+                {
+                    Statement = "Send matte black finish samples for the Riverside project.",
+                    Context = "Architect requested matte black finish samples and a revised quotation.",
+                    SourceEvidence = "Decision confirmed: Send matte black finish samples for the Riverside project.",
+                    NeedsReview = false
+                }
+            },
+            Commitments = new List<AiCommitmentPayload>
+            {
+                new()
+                {
+                    Action = "Prepare and courier the matte black sample pack to the Riverside project architect.",
+                    SuggestedOwner = "Alex Morgan",
+                    SuggestedDueDate = sampleDue.ToString("yyyy-MM-dd"),
+                    SourceEvidence = $"Owner is Alex Morgan. Due date is {sampleDue:dd MMMM yyyy}.",
+                    NeedsReview = false
+                },
+                new()
+                {
+                    Action = "Update the quotation with revised finish pricing and send it to the architect.",
+                    SuggestedOwner = "Priya Shah",
+                    SuggestedDueDate = quoteDue.ToString("yyyy-MM-dd"),
+                    SourceEvidence = $"Owner is Priya Shah. Due date is {quoteDue:dd MMMM yyyy}.",
+                    NeedsReview = false
+                }
+            },
+            OpenIssues = new List<AiIssuePayload>()
+        };
+    }
 
     private static AiExtractionPayload AmbiguousPayload() => new()
     {
@@ -111,47 +118,53 @@ public class MockAiExtractionService : IAiExtractionService
         }
     };
 
-    private static AiExtractionPayload FailDestinationPayload() => new()
+    private static AiExtractionPayload FailDestinationPayload()
     {
-        Summary = "Pilot team confirmed local task repository usage and captured a publish checklist commitment, plus a weak ERP suggestion that should be rejected.",
-        DiscussionPoints = new List<string>
+        var checklistDue = DateTime.UtcNow.Date.AddDays(7);
+        var failDue = DateTime.UtcNow.Date.AddDays(2);
+
+        return new()
         {
-            "Use local task repository for pilot publishing only.",
-            "Document pilot publish checklist.",
-            "Reject invented ERP write actions."
-        },
-        Decisions = new List<AiDecisionPayload>
-        {
-            new()
+            Summary = "Pilot team confirmed local task repository usage and captured a publish checklist commitment, plus a weak ERP suggestion that should be rejected.",
+            DiscussionPoints = new List<string>
             {
-                Statement = "Use the local task repository for pilot publishing only.",
-                Context = "Keeps the POC destination simulated and controllable.",
-                SourceEvidence = "Confirmed decision: Use the local task repository for pilot publishing only.",
-                NeedsReview = false
-            }
-        },
-        Commitments = new List<AiCommitmentPayload>
-        {
-            new()
-            {
-                Action = "Document the pilot publish checklist.",
-                SuggestedOwner = "Alex Morgan",
-                SuggestedDueDate = "2026-11-21",
-                SourceEvidence = "Alex Morgan will document the pilot publish checklist by 21 November 2026.",
-                NeedsReview = false
+                "Use local task repository for pilot publishing only.",
+                "Document pilot publish checklist.",
+                "Reject invented ERP write actions."
             },
-            new()
+            Decisions = new List<AiDecisionPayload>
             {
-                Action = "FAIL_DESTINATION: Sync approved pilot records to imaginary ERP queue immediately.",
-                SuggestedOwner = "Sam Patel",
-                SuggestedDueDate = "2026-11-15",
-                SourceEvidence = "vague suggestion to sync everything to an imaginary ERP queue immediately",
-                NeedsReview = true,
-                NeedsReviewReason = "Action invents an ERP write outside POC scope."
-            }
-        },
-        OpenIssues = new List<AiIssuePayload>()
-    };
+                new()
+                {
+                    Statement = "Use the local task repository for pilot publishing only.",
+                    Context = "Keeps the POC destination simulated and controllable.",
+                    SourceEvidence = "Confirmed decision: Use the local task repository for pilot publishing only.",
+                    NeedsReview = false
+                }
+            },
+            Commitments = new List<AiCommitmentPayload>
+            {
+                new()
+                {
+                    Action = "Document the pilot publish checklist.",
+                    SuggestedOwner = "Alex Morgan",
+                    SuggestedDueDate = checklistDue.ToString("yyyy-MM-dd"),
+                    SourceEvidence = $"Alex Morgan will document the pilot publish checklist by {checklistDue:dd MMMM yyyy}.",
+                    NeedsReview = false
+                },
+                new()
+                {
+                    Action = "FAIL_DESTINATION: Sync approved pilot records to imaginary ERP queue immediately.",
+                    SuggestedOwner = "Sam Patel",
+                    SuggestedDueDate = failDue.ToString("yyyy-MM-dd"),
+                    SourceEvidence = "vague suggestion to sync everything to an imaginary ERP queue immediately",
+                    NeedsReview = true,
+                    NeedsReviewReason = "Action invents an ERP write outside POC scope."
+                }
+            },
+            OpenIssues = new List<AiIssuePayload>()
+        };
+    }
 
     private static AiExtractionPayload HeuristicPayload(Meeting meeting)
     {

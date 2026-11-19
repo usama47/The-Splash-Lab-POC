@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, errMessage } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 
 type Commitment = {
   id: string;
@@ -26,62 +27,71 @@ export default function CommitmentsPage() {
   useEffect(() => { load().catch((e) => setError(errMessage(e))); }, []);
 
   async function setStatus(id: string, status: string) {
+    setError("");
     try {
       await api.post(`/api/commitments/${id}/status`, { status, note: `Set to ${status}` });
       await load();
-    } catch (e: unknown) { setError(errMessage(e)); }
+    } catch (e: unknown) {
+      setError(`Could not update status: ${errMessage(e)}`);
+    }
   }
 
   return (
     <div className="stack">
-      <div>
-        <h1 style={{ margin: 0 }}>Commitments and Tasks</h1>
-        <p className="muted">Follow-up view. Overdue is computed from due dates. Task destination is simulated locally.</p>
-      </div>
+      <PageHeader
+        title="Commitments and Tasks"
+        lede="Follow-up view with owners, due dates, destination task references, and status history. Overdue is computed from due dates."
+      />
       {error && <div className="error">{error}</div>}
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Action</th><th>Owner</th><th>Due</th><th>Status</th><th>Meeting</th><th>Task</th><th>History</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((c) => (
-            <tr key={c.id}>
-              <td>{c.action}</td>
-              <td>{c.ownerName}</td>
-              <td>{c.dueDate ? new Date(c.dueDate).toLocaleDateString() : "—"}</td>
-              <td>
-                <span className={`badge ${c.status === "Overdue" ? "needs" : c.status === "Completed" ? "approved" : ""}`}>
-                  {c.status}
-                </span>
-              </td>
-              <td>{c.meetingTitle || "—"}</td>
-              <td>
-                {c.task ? (
-                  <>
-                    <div>{c.task.externalTaskId || "—"}</div>
-                    <div className="muted">{c.task.destinationName} · {c.task.status}</div>
-                    {c.task.failureReason && <div className="badge rejected">{c.task.failureReason}</div>}
-                    <div className="badge sim">Simulated</div>
-                  </>
-                ) : "—"}
-              </td>
-              <td>
-                <ul style={{ margin: 0, paddingLeft: "1rem", fontSize: "0.8rem" }}>
-                  {c.history?.slice(-3).map((h, idx) => (
-                    <li key={idx}>{h.from} → {h.to} ({h.changedBy})</li>
-                  ))}
-                </ul>
-              </td>
-              <td className="form-actions">
-                <button onClick={() => setStatus(c.id, "InProgress")}>In progress</button>
-                <button onClick={() => setStatus(c.id, "Completed")}>Complete</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {items.length === 0 ? (
+        <div className="empty">No commitments yet. Publish an approved meeting draft to create them.</div>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Action</th><th>Owner</th><th>Due</th><th>Status</th><th>Meeting</th><th>Task</th><th>History</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((c) => (
+                <tr key={c.id}>
+                  <td><strong>{c.action}</strong></td>
+                  <td>{c.ownerName}</td>
+                  <td>{c.dueDate ? new Date(c.dueDate).toLocaleDateString() : "—"}</td>
+                  <td>
+                    <span className={`badge ${c.status === "Overdue" ? "needs" : c.status === "Completed" ? "approved" : c.status === "InProgress" ? "sim" : "neutral"}`}>
+                      {c.status.replace(/([a-z])([A-Z])/g, "$1 $2")}
+                    </span>
+                  </td>
+                  <td>{c.meetingTitle || "—"}</td>
+                  <td>
+                    {c.task ? (
+                      <>
+                        <div><code>{c.task.externalTaskId || "—"}</code></div>
+                        <div className="muted" style={{ fontSize: "0.8rem" }}>{c.task.destinationName} · {c.task.status}</div>
+                        {c.task.failureReason && <div className="badge rejected">{c.task.failureReason}</div>}
+                        <div className="badge sim">Simulated</div>
+                      </>
+                    ) : "—"}
+                  </td>
+                  <td>
+                    <ul style={{ margin: 0, paddingLeft: "1rem", fontSize: "0.8rem" }}>
+                      {c.history?.slice(-3).map((h, idx) => (
+                        <li key={idx}>{h.from} → {h.to} ({h.changedBy})</li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className="form-actions" style={{ marginTop: 0 }}>
+                    <button onClick={() => setStatus(c.id, "InProgress")}>In progress</button>
+                    <button className="primary" onClick={() => setStatus(c.id, "Completed")}>Complete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Dashboard, api, errMessage } from "@/lib/api";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function DashboardPage() {
   const [data, setData] = useState<Dashboard | null>(null);
@@ -28,13 +29,19 @@ export default function DashboardPage() {
 
   return (
     <div className="stack">
-      <div>
-        <h1 style={{ margin: 0 }}>Dashboard</h1>
-        <p className="muted">Operations pilot — meeting-to-task foundation (persisted SQLite data).</p>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        lede="Operations pilot foundation — live counts from the local SQLite database."
+        actions={
+          <Link className="link-btn" href="/meetings">
+            Start demo workflow →
+          </Link>
+        }
+      />
       <div className="notice">
-        External systems are simulated in MODE A. Start with{" "}
-        <Link href="/meetings">Meetings</Link> → Generate Draft → Review → Publish.
+        External systems are simulated in MODE A. Client path:{" "}
+        <Link href="/meetings">Meetings</Link> → UK sample meeting → Generate Draft → approve → Publish →
+        Decisions, Commitments, Audit Log.
       </div>
       <div className="grid-cards">
         {stats.map((s) => (
@@ -45,11 +52,11 @@ export default function DashboardPage() {
         ))}
       </div>
       <div className="panel">
-        <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Meeting-to-task workflow progress</h2>
+        <h2 className="panel-title">Meeting-to-task workflow progress</h2>
         <div className="progress">
           {data.workflowProgress.map((s) => (
             <div className="step" key={s.step}>
-              <span className="muted">{s.step}</span>
+              <span>{s.step}</span>
               <strong>{s.count}</strong>
             </div>
           ))}

@@ -13,6 +13,10 @@ public static class DemoSeed
     public static readonly Guid CompleteMeetingId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     public static readonly Guid AmbiguousMeetingId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     public static readonly Guid FailMeetingId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    public static readonly Guid PriorMeetingId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+    public static readonly Guid PriorDecisionId = Guid.Parse("de111111-1111-1111-1111-111111111111");
+    public static readonly Guid PriorCommitmentOpenId = Guid.Parse("c0111111-1111-1111-1111-111111111111");
+    public static readonly Guid PriorCommitmentDoneId = Guid.Parse("c0222222-2222-2222-2222-222222222222");
 
     public static async Task EnsureSeededAsync(AppDbContext db)
     {
@@ -85,6 +89,126 @@ public static class DemoSeed
                     ScenarioKey = "fail-destination",
                     WorkflowStatus = MeetingWorkflowStatus.New,
                     Transcript = ScenarioTranscripts.FailDestinationMeeting
+                },
+                new Meeting
+                {
+                    Id = PriorMeetingId,
+                    Title = "US Warehouse Sync — Finish Availability",
+                    MeetingDate = DateTime.UtcNow.Date.AddDays(-10),
+                    Department = "Operations",
+                    Organizer = "Jordan Lee",
+                    Source = "Simulated Teams Transcript",
+                    ScenarioKey = "prior-published",
+                    WorkflowStatus = MeetingWorkflowStatus.Published,
+                    Transcript = ScenarioTranscripts.PriorPublishedMeeting,
+                    UpdatedAtUtc = DateTime.UtcNow.AddDays(-9)
+                });
+        }
+
+        if (!db.Decisions.Any())
+        {
+            db.Decisions.Add(new DecisionRecord
+            {
+                Id = PriorDecisionId,
+                Statement = "Publish a shared US/UK finish availability note for Operations and Sales.",
+                Context = "Agreed in the US warehouse sync to stop answering finish questions from personal inboxes.",
+                MeetingId = PriorMeetingId,
+                ApproverName = "Jordan Lee",
+                ApproverUserId = ReviewerId,
+                DecisionDateUtc = DateTime.UtcNow.AddDays(-9),
+                IsApproved = true,
+                Department = "Operations",
+                IdempotencyKey = $"decision:{PriorMeetingId}:seed-prior"
+            });
+        }
+
+        if (!db.Commitments.Any())
+        {
+            var openDue = DateTime.UtcNow.Date.AddDays(4);
+            var doneDue = DateTime.UtcNow.Date.AddDays(-2);
+
+            db.Commitments.AddRange(
+                new CommitmentRecord
+                {
+                    Id = PriorCommitmentOpenId,
+                    Action = "Draft the shared finish availability note and circulate to Sales.",
+                    OwnerName = "Alex Morgan",
+                    OwnerUserId = EmployeeId,
+                    DueDate = openDue,
+                    Status = CommitmentStatus.InProgress,
+                    MeetingId = PriorMeetingId,
+                    DecisionId = PriorDecisionId,
+                    Department = "Operations",
+                    IdempotencyKey = $"commitment:{PriorMeetingId}:seed-open",
+                    CreatedAtUtc = DateTime.UtcNow.AddDays(-9),
+                    UpdatedAtUtc = DateTime.UtcNow.AddDays(-1),
+                    StatusHistory =
+                    {
+                        new CommitmentStatusHistory
+                        {
+                            Id = Guid.NewGuid(),
+                            CommitmentId = PriorCommitmentOpenId,
+                            FromStatus = CommitmentStatus.Open,
+                            ToStatus = CommitmentStatus.InProgress,
+                            ChangedBy = "Alex Morgan",
+                            Note = "Started drafting after warehouse confirmation",
+                            ChangedAtUtc = DateTime.UtcNow.AddDays(-1)
+                        }
+                    },
+                    DestinationTask = new DestinationTask
+                    {
+                        Id = Guid.NewGuid(),
+                        CommitmentId = PriorCommitmentOpenId,
+                        ExternalTaskId = "LOCAL-PRIOR01",
+                        Title = "Draft the shared finish availability note and circulate to Sales.",
+                        Assignee = "Alex Morgan",
+                        DueDate = openDue,
+                        Status = TaskDestinationStatus.Created,
+                        DestinationName = "LocalTaskRepository",
+                        IdempotencyKey = $"task:{PriorCommitmentOpenId}",
+                        CreatedAtUtc = DateTime.UtcNow.AddDays(-9)
+                    }
+                },
+                new CommitmentRecord
+                {
+                    Id = PriorCommitmentDoneId,
+                    Action = "Confirm antique brass restock date with the US warehouse lead.",
+                    OwnerName = "Sam Patel",
+                    OwnerUserId = AdminId,
+                    DueDate = doneDue,
+                    Status = CommitmentStatus.Completed,
+                    MeetingId = PriorMeetingId,
+                    DecisionId = PriorDecisionId,
+                    Department = "Operations",
+                    IdempotencyKey = $"commitment:{PriorMeetingId}:seed-done",
+                    CreatedAtUtc = DateTime.UtcNow.AddDays(-9),
+                    UpdatedAtUtc = DateTime.UtcNow.AddDays(-3),
+                    StatusHistory =
+                    {
+                        new CommitmentStatusHistory
+                        {
+                            Id = Guid.NewGuid(),
+                            CommitmentId = PriorCommitmentDoneId,
+                            FromStatus = CommitmentStatus.Open,
+                            ToStatus = CommitmentStatus.Completed,
+                            ChangedBy = "Sam Patel",
+                            Note = "Restock confirmed for next Friday",
+                            ChangedAtUtc = DateTime.UtcNow.AddDays(-3)
+                        }
+                    },
+                    DestinationTask = new DestinationTask
+                    {
+                        Id = Guid.NewGuid(),
+                        CommitmentId = PriorCommitmentDoneId,
+                        ExternalTaskId = "LOCAL-PRIOR02",
+                        Title = "Confirm antique brass restock date with the US warehouse lead.",
+                        Assignee = "Sam Patel",
+                        DueDate = doneDue,
+                        Status = TaskDestinationStatus.Created,
+                        DestinationName = "LocalTaskRepository",
+                        IdempotencyKey = $"task:{PriorCommitmentDoneId}",
+                        CreatedAtUtc = DateTime.UtcNow.AddDays(-9)
+                    }
                 });
         }
 
@@ -150,6 +274,36 @@ public static class DemoSeed
                     Classification = ProcessClassification.Automate,
                     OpportunityForImprovement = "Publish approved decisions to a shared register.",
                     CurrentStatus = "Mapped"
+                },
+                new ProcessRegisterEntry
+                {
+                    Id = Guid.Parse("d5555555-5555-5555-5555-555555555555"),
+                    ProcessName = "Architect sample pack assembly",
+                    Department = "Operations",
+                    Region = ProcessRegion.UK,
+                    OwnerName = "Alex Morgan",
+                    Frequency = "Daily",
+                    EstimatedHoursPerWeek = 5.0m,
+                    SystemsUsed = "Email, Warehouse sheet",
+                    PainScore = 4,
+                    Classification = ProcessClassification.Accelerate,
+                    OpportunityForImprovement = "Standardize pack contents from approved knowledge articles.",
+                    CurrentStatus = "Mapped"
+                },
+                new ProcessRegisterEntry
+                {
+                    Id = Guid.Parse("d6666666-6666-6666-6666-666666666666"),
+                    ProcessName = "US / UK finish availability checks",
+                    Department = "Product",
+                    Region = ProcessRegion.Global,
+                    OwnerName = "Chris Nguyen",
+                    Frequency = "Weekly",
+                    EstimatedHoursPerWeek = 2.5m,
+                    SystemsUsed = "Email, Product catalog",
+                    PainScore = 2,
+                    Classification = ProcessClassification.Elevate,
+                    OpportunityForImprovement = "Publish a reusable finishes matrix into Knowledge.",
+                    CurrentStatus = "Mapped"
                 });
         }
 
@@ -177,24 +331,66 @@ public static class DemoSeed
                     Priority = IssuePriority.Medium,
                     Resolution = "Documented standard lead times: UK 5 business days, US 7 business days for standard finishes.",
                     ResolvedAtUtc = DateTime.UtcNow.AddDays(-3)
+                },
+                new IssueRecord
+                {
+                    Id = Guid.Parse("e3333333-3333-3333-3333-333333333333"),
+                    Title = "Matte black finish stock confirmation lag",
+                    Description = "Sales waits on ad-hoc warehouse replies before confirming matte black availability to architects.",
+                    Department = "Sales",
+                    OwnerName = "Priya Shah",
+                    Status = IssueStatus.InProgress,
+                    Priority = IssuePriority.Medium
+                },
+                new IssueRecord
+                {
+                    Id = Guid.Parse("e4444444-4444-4444-4444-444444444444"),
+                    Title = "Meeting actions tracked in personal notebooks",
+                    Description = "Project coordinators capture commitments differently across UK and US teams, causing missed follow-ups.",
+                    Department = "Projects",
+                    OwnerName = "Jordan Lee",
+                    Status = IssueStatus.Open,
+                    Priority = IssuePriority.Critical
                 });
         }
 
         if (!db.KnowledgeArticles.Any())
         {
-            db.KnowledgeArticles.Add(new KnowledgeArticle
-            {
-                Id = Guid.Parse("f1111111-1111-1111-1111-111111111111"),
-                Title = "Standard sample lead times (architect requests)",
-                Description = "UK: 5 business days for standard finishes. US: 7 business days. Expedite requires Operations Manager approval.",
-                Department = "Operations",
-                OwnerName = "Alex Morgan",
-                ApprovalStatus = ApprovalStatus.Approved,
-                ApprovedByName = "Jordan Lee",
-                ApprovedByUserId = ReviewerId,
-                ApprovedAtUtc = DateTime.UtcNow.AddDays(-2),
-                SourceIssueId = Guid.Parse("e2222222-2222-2222-2222-222222222222")
-            });
+            db.KnowledgeArticles.AddRange(
+                new KnowledgeArticle
+                {
+                    Id = Guid.Parse("f1111111-1111-1111-1111-111111111111"),
+                    Title = "Standard sample lead times (architect requests)",
+                    Description = "UK: 5 business days for standard finishes. US: 7 business days. Expedite requires Operations Manager approval.",
+                    Department = "Operations",
+                    OwnerName = "Alex Morgan",
+                    ApprovalStatus = ApprovalStatus.Approved,
+                    ApprovedByName = "Jordan Lee",
+                    ApprovedByUserId = ReviewerId,
+                    ApprovedAtUtc = DateTime.UtcNow.AddDays(-2),
+                    SourceIssueId = Guid.Parse("e2222222-2222-2222-2222-222222222222")
+                },
+                new KnowledgeArticle
+                {
+                    Id = Guid.Parse("f2222222-2222-2222-2222-222222222222"),
+                    Title = "Meeting-to-task review checklist (pilot)",
+                    Description = "1) Confirm decision wording. 2) Require owner + due date on every commitment. 3) Reject invented system writes. 4) Publish only after reviewer approval.",
+                    Department = "Operations",
+                    OwnerName = "Jordan Lee",
+                    ApprovalStatus = ApprovalStatus.Approved,
+                    ApprovedByName = "Jordan Lee",
+                    ApprovedByUserId = ReviewerId,
+                    ApprovedAtUtc = DateTime.UtcNow.AddDays(-1)
+                },
+                new KnowledgeArticle
+                {
+                    Id = Guid.Parse("f3333333-3333-3333-3333-333333333333"),
+                    Title = "Draft: Brass comparison board guidance",
+                    Description = "Proposed guidance for brushed vs antique brass boards. Waiting for Product owner confirmation before approval.",
+                    Department = "Product",
+                    OwnerName = "Chris Nguyen",
+                    ApprovalStatus = ApprovalStatus.PendingApproval
+                });
         }
 
         if (!db.IntegrationSettings.Any())
@@ -281,17 +477,45 @@ public static class DemoSeed
 
         if (!db.AuditLogs.Any())
         {
-            db.AuditLogs.Add(new AuditLogEntry
-            {
-                Id = Guid.NewGuid(),
-                OccurredAtUtc = DateTime.UtcNow.AddMinutes(-5),
-                ActorName = "System",
-                Action = "SeedDatabase",
-                EntityType = "Database",
-                EntityId = "demo",
-                Succeeded = true,
-                AfterValues = "Seeded users, meetings, processes, issues, knowledge, integrations."
-            });
+            db.AuditLogs.AddRange(
+                new AuditLogEntry
+                {
+                    Id = Guid.NewGuid(),
+                    OccurredAtUtc = DateTime.UtcNow.AddDays(-9),
+                    ActorName = "Jordan Lee",
+                    ActorUserId = ReviewerId,
+                    Action = "PublishDraft",
+                    EntityType = "Meeting",
+                    EntityId = PriorMeetingId.ToString(),
+                    MeetingId = PriorMeetingId,
+                    Succeeded = true,
+                    AfterValues = "Published prior US warehouse sync decision and commitments."
+                },
+                new AuditLogEntry
+                {
+                    Id = Guid.NewGuid(),
+                    OccurredAtUtc = DateTime.UtcNow.AddDays(-3),
+                    ActorName = "Sam Patel",
+                    ActorUserId = AdminId,
+                    Action = "UpdateCommitmentStatus",
+                    EntityType = "Commitment",
+                    EntityId = PriorCommitmentDoneId.ToString(),
+                    MeetingId = PriorMeetingId,
+                    BeforeValues = "InProgress",
+                    AfterValues = "Completed",
+                    Succeeded = true
+                },
+                new AuditLogEntry
+                {
+                    Id = Guid.NewGuid(),
+                    OccurredAtUtc = DateTime.UtcNow.AddMinutes(-5),
+                    ActorName = "System",
+                    Action = "SeedDatabase",
+                    EntityType = "Database",
+                    EntityId = "demo",
+                    Succeeded = true,
+                    AfterValues = "Seeded users, meetings, processes, issues, knowledge, prior published records, integrations."
+                });
         }
 
         await db.SaveChangesAsync();
@@ -351,5 +575,16 @@ Jordan: Commitment one — Alex Morgan will document the pilot publish checklist
 Sam: There was also a vague suggestion to sync everything to an imaginary ERP queue immediately, which we should reject.
 
 Jordan: Correct. Reject any action that invents an ERP write. We will also exercise a simulated task destination failure for the retry path using the special marker FAIL_DESTINATION in the commitment title when testing.
+""";
+
+    public const string PriorPublishedMeeting = """
+Meeting: US Warehouse Sync — Finish Availability
+Attendees: Jordan Lee, Alex Morgan, Sam Patel
+
+Jordan: Decision confirmed — publish a shared US/UK finish availability note for Operations and Sales.
+
+Alex: I will draft the shared finish availability note and circulate it to Sales.
+
+Sam: I will confirm the antique brass restock date with the US warehouse lead.
 """;
 }
