@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/.vs/
+**/node_modules/
+**/.next/
+**/out/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+frontend/.env.local
+.env
+*.user
+*.swp
+.DS_Store
