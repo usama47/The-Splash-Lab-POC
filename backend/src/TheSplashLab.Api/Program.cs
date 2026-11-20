@@ -29,12 +29,26 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseSqlite($"Data Source={dbPath}"));
 
 builder.Services.AddDemoAuth();
+
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? Array.Empty<string>();
+var corsOriginsScalar = builder.Configuration["Cors:AllowedOrigins"];
+if (corsOrigins.Length == 0 && !string.IsNullOrWhiteSpace(corsOriginsScalar))
+    corsOrigins = new[] { corsOriginsScalar };
+if (corsOrigins.Length == 1 && corsOrigins[0].Contains(',', StringComparison.Ordinal))
+{
+    corsOrigins = corsOrigins[0]
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}
+if (corsOrigins.Length == 0)
+{
+    corsOrigins = new[] { "http://localhost:3000", "http://127.0.0.1:3000" };
+}
+
 builder.Services.AddCors(opt =>
 {
     opt.AddPolicy("frontend", p => p
-        .WithOrigins(
-            "http://localhost:3000",
-            "http://127.0.0.1:3000")
+        .WithOrigins(corsOrigins)
         .AllowAnyHeader()
         .AllowAnyMethod());
 });

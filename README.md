@@ -88,6 +88,16 @@ npm run dev
 - API: http://localhost:5080  
 - Swagger: http://localhost:5080/swagger  
 
+## Deploy / publish for a client demo
+
+See **[deploy.md](./deploy.md)** for:
+
+- Same-day local + tunnel sharing
+- Hosted split (Render/Railway API + Vercel UI)
+- Docker Compose on a VPS (`deploy/`)
+- Azure-shaped option
+- CORS, SQLite volume, and smoke-check notes
+
 ## MODE A vs MODE B
 
 | Integration | MODE A (default) | MODE B |
