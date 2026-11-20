@@ -127,9 +127,12 @@ Demo identity switching is **not** Microsoft Entra authentication.
 
 ## Seeded scenarios
 
-1. **Complete meeting** — clear decision, two owned commitments with due dates.  
-2. **Ambiguous meeting** — missing owner/due date → Needs Review.  
-3. **Fail destination** — reject weak ERP suggestion; `FAIL_DESTINATION` exercises failed task write + safe retry.
+1. **Complete meeting** — UK Sample Coordination — clear decision, two owned commitments with due dates.  
+2. **Ambiguous meeting** — Product Sample Review — missing owner/due date → Needs Review.  
+3. **Fail destination** — Project Kickoff — reject weak ERP suggestion; `FAIL_DESTINATION` exercises failed task write + safe retry.  
+4. **Prior published (seed)** — US Warehouse Sync — already in Decisions / Commitments so registers look lived-in at demo start.
+
+Also seeded: 6 processes, 4 issues, 3 knowledge articles, integration statuses, audit history.
 
 ## Demo identities (RBAC)
 
@@ -143,18 +146,18 @@ Switch via the sidebar control (local demo only).
 
 ## 10-minute demo walkthrough
 
-Full script: project store `docs/demo-walkthrough.md`. Short version below.
+Full script: **[docs/demo-walkthrough.md](./docs/demo-walkthrough.md)**  
 
-1. Open Dashboard — show seeded counts / process progress.  
-2. Meetings → open **UK Sample Coordination**.  
-3. Generate Draft (Mock AI) — point out suggestions vs official records.  
-4. Approve decision + commitments → Save draft → Publish.  
-5. Decisions + Commitments registers show published records + local task IDs.  
-6. Ambiguous meeting → Needs Review fields → correct owner/date → publish.  
-7. Fail scenario → reject ERP action; show failed task visibility / retry.  
-8. Audit Log — append-only history.  
-9. Integration Settings — Simulated vs Not Connected.  
-10. Restart API — data persists in SQLite.
+Short version:
+
+1. Dashboard — MODE A banner + seeded counts / workflow progress.  
+2. Meetings → **UK Sample Coordination** → Generate Draft → approve → publish.  
+3. Decisions + Commitments — published rows + `LOCAL-…` simulated tasks; try status update.  
+4. **Product Sample Review** — Needs Review → fill owner/date → publish.  
+5. Optional: Employee cannot publish (403).  
+6. **Project Kickoff** — reject ERP / or show FAIL_DESTINATION failure + retry.  
+7. Process Register, Issues → Knowledge approve, Integration Settings.  
+8. Audit Log + restart API to prove SQLite persistence.
 
 ## Proposed 90-day growth path (not delivered by this POC)
 
