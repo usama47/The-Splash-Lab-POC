@@ -5,6 +5,12 @@ export function errMessage(e: unknown): string {
   return String(e);
 }
 
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public data: unknown) {
+    super(message);
+  }
+}
+
 const USER_KEY = "splashlab.demoUserId";
 
 export function getDemoUserId(): string {
@@ -26,13 +32,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers, cache: "no-store" });
   if (!res.ok) {
     let message = res.statusText;
+    let data: unknown = undefined;
     try {
-      const data = await res.json();
-      message = data.error || data.message || data.title || JSON.stringify(data);
+      data = await res.json();
+      const body = data as { error?: string; message?: string; title?: string };
+      message = body.error || body.message || body.title || JSON.stringify(data);
     } catch {
       /* ignore */
     }
-    throw new Error(message);
+    throw new ApiError(message, res.status, data);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -83,10 +91,37 @@ export type DraftItem = {
   needsReviewReason?: string;
 };
 
+export type PublishedTask = {
+  commitmentId: string;
+  action: string;
+  owner: string;
+  dueDate: string | null;
+  taskId: string | null;
+  externalTaskId: string;
+  status: string;
+  isNew: boolean;
+  failureReason: string | null;
+};
+
+export type PublishResult = {
+  succeeded: boolean;
+  message: string;
+  meetingId: string;
+  decisionsPublished: number;
+  commitmentsPublished: number;
+  tasksCreated: number;
+  tasksNewlyCreated: number;
+  tasksAlreadyExisting: number;
+  tasksFailed: number;
+  tasks: PublishedTask[];
+  errors: string[];
+};
+
 export type MeetingDetail = MeetingSummary & {
   transcript: string;
   draft: {
     id: string;
+    version: string;
     summary: string;
     discussionPoints: string[];
     providerName: string;

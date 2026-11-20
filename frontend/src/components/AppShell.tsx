@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, getDemoUserId, setDemoUserId } from "@/lib/api";
+import { Toaster } from "./Toaster";
 import styles from "./AppShell.module.css";
 
 const NAV = [
@@ -101,6 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <div className={`${styles.content} page-enter`}>{children}</div>
       </main>
+      <Toaster />
     </div>
   );
 }

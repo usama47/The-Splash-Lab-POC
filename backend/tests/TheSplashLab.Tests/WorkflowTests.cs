@@ -174,155 +174,218 @@ public class WorkflowTests
         (await audit.Content.ReadAsStringAsync()).Should().Contain("PublishDraft");
     }
 
-    [Fact]
-    public async Task Rejected_action_is_not_published_and_failed_destination_is_visible()
+    private static async Task<JsonElement> GenerateAsync(HttpClient client, Guid meetingId)
     {
-        await using var factory = NewFactory();
-        var client = CreateClient(factory, DemoSeed.ReviewerId);
-
-        var gen = await client.PostAsync($"/api/meetings/{DemoSeed.FailMeetingId}/generate-draft", null);
+        var gen = await client.PostAsync($"/api/meetings/{meetingId}/generate-draft", null);
         gen.EnsureSuccessStatusCode();
-        var draft = await gen.Content.ReadFromJsonAsync<JsonElement>();
+        return await gen.Content.ReadFromJsonAsync<JsonElement>();
+    }
 
-        var decisions = draft.GetProperty("decisions").EnumerateArray().Select(d => new DraftDecisionEdit
-        {
-            Id = d.GetProperty("id").GetGuid(),
-            Statement = d.GetProperty("statement").GetString()!,
-            Context = d.GetProperty("context").GetString()!,
-            SourceEvidence = d.GetProperty("sourceEvidence").GetString()!,
-            ReviewStatus = "Approved"
-        }).ToList();
+    private static async Task<PublishResult> PublishAsync(HttpClient client, Guid meetingId, PublishRequest request)
+    {
+        var resp = await client.PostAsJsonAsync($"/api/meetings/{meetingId}/publish", request);
+        resp.EnsureSuccessStatusCode();
+        return (await resp.Content.ReadFromJsonAsync<PublishResult>())!;
+    }
 
-        var commitments = draft.GetProperty("commitments").EnumerateArray().Select(c =>
-        {
-            var action = c.GetProperty("action").GetString()!;
-            var reject = action.Contains("FAIL_DESTINATION", StringComparison.OrdinalIgnoreCase) ||
-                         action.Contains("ERP", StringComparison.OrdinalIgnoreCase);
-            // Approve the checklist; keep FAIL_DESTINATION approved to exercise failure path
-            // and also have one rejected non-fail item if present — for this scenario approve FAIL to test failure
-            return new DraftCommitmentEdit
-            {
-                Id = c.GetProperty("id").GetGuid(),
-                Action = action,
-                SuggestedOwner = c.TryGetProperty("suggestedOwner", out var o) && o.ValueKind != JsonValueKind.Null ? o.GetString() : "Alex Morgan",
-                SuggestedDueDate = c.TryGetProperty("suggestedDueDate", out var dd) && dd.ValueKind != JsonValueKind.Null
-                    ? dd.GetDateTime() : DateTime.UtcNow.Date.AddDays(7),
-                SourceEvidence = c.GetProperty("sourceEvidence").GetString()!,
-                ReviewStatus = action.Contains("imaginary", StringComparison.OrdinalIgnoreCase) && !action.Contains("FAIL_DESTINATION")
-                    ? "Rejected"
-                    : (action.Contains("FAIL_DESTINATION") ? "Approved" : "Approved"),
-                NeedsReview = false
-            };
-        }).ToList();
-
-        // Explicitly reject any non-FAIL imaginary ERP if separate; ensure at least one rejected for audit
-        if (commitments.All(c => c.ReviewStatus != "Rejected") && commitments.Count > 1)
-        {
-            var weak = commitments.FirstOrDefault(c => c.Action.Contains("FAIL_DESTINATION"));
-            // Keep FAIL approved for destination failure; add a manual rejected item via save isn't needed —
-            // reject the FAIL one for rejection test in a second assertion path.
-        }
-
-        // Split: reject FAIL_DESTINATION for rejection test first on a copy — instead approve checklist only, reject FAIL
-        foreach (var c in commitments)
-        {
-            if (c.Action.Contains("FAIL_DESTINATION"))
-                c.ReviewStatus = "Rejected";
-        }
-
-        var save = await client.PutAsJsonAsync($"/api/meetings/{DemoSeed.FailMeetingId}/draft", new SaveDraftRequest
+    /// <summary>Builds the on-screen draft state from a draft payload with every item approved.</summary>
+    private static SaveDraftRequest ApproveAll(JsonElement draft, Action<DraftCommitmentEdit>? editCommitment = null)
+    {
+        var request = new SaveDraftRequest
         {
             Summary = draft.GetProperty("summary").GetString()!,
             DiscussionPoints = new(),
-            Decisions = decisions,
-            Commitments = commitments,
-            Issues = new()
+            Decisions = draft.GetProperty("decisions").EnumerateArray().Select(d => new DraftDecisionEdit
+            {
+                Id = d.GetProperty("id").GetGuid(),
+                Statement = d.GetProperty("statement").GetString()!,
+                Context = d.GetProperty("context").GetString()!,
+                SourceEvidence = d.GetProperty("sourceEvidence").GetString()!,
+                ReviewStatus = "Approved"
+            }).ToList(),
+            Commitments = draft.GetProperty("commitments").EnumerateArray().Select(c => new DraftCommitmentEdit
+            {
+                Id = c.GetProperty("id").GetGuid(),
+                Action = c.GetProperty("action").GetString()!,
+                SuggestedOwner = c.GetProperty("suggestedOwner").GetString(),
+                SuggestedDueDate = c.GetProperty("suggestedDueDate").GetDateTime(),
+                SourceEvidence = c.GetProperty("sourceEvidence").GetString()!,
+                ReviewStatus = "Approved"
+            }).ToList()
+        };
+
+        if (editCommitment is not null)
+            foreach (var c in request.Commitments) editCommitment(c);
+        return request;
+    }
+
+    private static AppDbContext OpenDb(PocWebApplicationFactory factory)
+        => factory.Services.CreateScope().ServiceProvider.GetRequiredService<AppDbContext>();
+
+    [Fact]
+    public async Task Publish_applies_inline_edits_and_task_uses_edited_owner_and_wording()
+    {
+        await using var factory = NewFactory();
+        var client = CreateClient(factory);
+        var draft = await GenerateAsync(client, DemoSeed.CompleteMeetingId);
+
+        var onScreen = ApproveAll(draft, c =>
+        {
+            if (!c.Action.StartsWith("Prepare and courier")) return;
+            c.Action = "Courier the matte black sample pack by express post.";
+            c.SuggestedOwner = "Taylor Quinn";
         });
-        save.EnsureSuccessStatusCode();
 
-        var publish = await client.PostAsJsonAsync($"/api/meetings/{DemoSeed.FailMeetingId}/publish", new PublishRequest());
-        publish.EnsureSuccessStatusCode();
-        var result = await publish.Content.ReadFromJsonAsync<PublishResult>();
-        result!.Succeeded.Should().BeTrue();
-        result.CommitmentsPublished.Should().Be(1);
+        // No separate save: the on-screen edits travel with the publish request.
+        var result = await PublishAsync(client, DemoSeed.CompleteMeetingId, new PublishRequest
+        {
+            ExpectedVersion = draft.GetProperty("version").GetString(),
+            Draft = onScreen
+        });
 
-        var commitmentsResp = await (await client.GetAsync("/api/commitments")).Content.ReadAsStringAsync();
-        commitmentsResp.Should().Contain("publish checklist");
-        commitmentsResp.Should().NotContain("imaginary ERP queue");
+        result.Succeeded.Should().BeTrue();
+        result.TasksNewlyCreated.Should().Be(2);
+
+        var db = OpenDb(factory);
+        var tasks = await db.DestinationTasks
+            .Where(t => t.Commitment.MeetingId == DemoSeed.CompleteMeetingId)
+            .ToListAsync();
+        tasks.Should().HaveCount(2);
+        tasks.Should().Contain(t => t.Title == "Courier the matte black sample pack by express post." && t.Assignee == "Taylor Quinn");
+        tasks.Should().NotContain(t => t.Title.StartsWith("Prepare and courier"));
     }
 
     [Fact]
-    public async Task Task_adapter_failure_and_retry()
+    public async Task Rejecting_a_previously_approved_action_creates_no_task_for_it()
     {
         await using var factory = NewFactory();
-        var client = CreateClient(factory, DemoSeed.ReviewerId);
+        var client = CreateClient(factory);
+        var draft = await GenerateAsync(client, DemoSeed.CompleteMeetingId);
 
-        // Create a fresh meeting with FAIL_DESTINATION commitment via upload/create
-        var create = await client.PostAsJsonAsync("/api/meetings", new CreateMeetingRequest
+        // The server holds both actions as Approved after an earlier save.
+        var saved = await client.PutAsJsonAsync($"/api/meetings/{DemoSeed.CompleteMeetingId}/draft", ApproveAll(draft));
+        saved.EnsureSuccessStatusCode();
+        var savedDraft = await saved.Content.ReadFromJsonAsync<JsonElement>();
+
+        // The reviewer then rejects the quotation action on screen and publishes without saving again.
+        var onScreen = ApproveAll(savedDraft, c =>
         {
-            Title = "Failure retry meeting",
-            Department = "Operations",
-            Organizer = "Jordan Lee",
-            MeetingDate = DateTime.UtcNow.Date,
-            Transcript = ScenarioMini.FailTranscript,
-            Source = "Test"
+            if (c.Action.StartsWith("Update the quotation")) c.ReviewStatus = "Rejected";
         });
-        create.EnsureSuccessStatusCode();
-        var created = await create.Content.ReadFromJsonAsync<JsonElement>();
-        var meetingId = created.GetProperty("id").GetGuid();
-
-        // Manually set scenario via DB
-        using (var scope = factory.Services.CreateScope())
+        var result = await PublishAsync(client, DemoSeed.CompleteMeetingId, new PublishRequest
         {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var m = await db.Meetings.FirstAsync(x => x.Id == meetingId);
-            m.ScenarioKey = "fail-destination";
-            await db.SaveChangesAsync();
+            ExpectedVersion = savedDraft.GetProperty("version").GetString(),
+            Draft = onScreen
+        });
+
+        result.CommitmentsPublished.Should().Be(1);
+        result.TasksNewlyCreated.Should().Be(1);
+
+        var db = OpenDb(factory);
+        var commitments = await db.Commitments.Where(c => c.MeetingId == DemoSeed.CompleteMeetingId).ToListAsync();
+        commitments.Should().ContainSingle();
+        commitments.Should().NotContain(c => c.Action.StartsWith("Update the quotation"));
+        (await db.DestinationTasks.CountAsync(t => t.Commitment.MeetingId == DemoSeed.CompleteMeetingId)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Publish_with_stale_version_returns_conflict_and_publishes_nothing()
+    {
+        await using var factory = NewFactory();
+        var client = CreateClient(factory);
+        var draft = await GenerateAsync(client, DemoSeed.CompleteMeetingId);
+        var staleVersion = draft.GetProperty("version").GetString();
+
+        // Another reviewer saves a change after this reviewer opened the draft.
+        var otherReviewer = ApproveAll(draft);
+        otherReviewer.Summary = "Edited by another reviewer.";
+        (await client.PutAsJsonAsync($"/api/meetings/{DemoSeed.CompleteMeetingId}/draft", otherReviewer)).EnsureSuccessStatusCode();
+
+        var publish = await client.PostAsJsonAsync($"/api/meetings/{DemoSeed.CompleteMeetingId}/publish", new PublishRequest
+        {
+            ExpectedVersion = staleVersion,
+            Draft = ApproveAll(draft)
+        });
+
+        publish.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var body = await publish.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("currentDraft").GetProperty("summary").GetString().Should().Be("Edited by another reviewer.");
+
+        var db = OpenDb(factory);
+        (await db.Commitments.CountAsync(c => c.MeetingId == DemoSeed.CompleteMeetingId)).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "2026-11-17", "2026-11-14")]
+    [InlineData("cccccccc-cccc-cccc-cccc-cccccccccccc", "2026-11-21", "2026-11-24")]
+    public async Task Seeded_evidence_and_dates_match_transcript_and_regeneration_is_stable(string meetingId, string dueA, string dueB)
+    {
+        await using var factory = NewFactory();
+        var client = CreateClient(factory);
+        var id = Guid.Parse(meetingId);
+
+        var meeting = await client.GetFromJsonAsync<JsonElement>($"/api/meetings/{id}");
+        var transcript = meeting.GetProperty("transcript").GetString()!;
+
+        foreach (var draft in new[] { await GenerateAsync(client, id), await GenerateAsync(client, id) })
+        {
+            var commitments = draft.GetProperty("commitments").EnumerateArray().ToList();
+            commitments
+                .Select(c => c.GetProperty("suggestedDueDate").GetDateTime().ToString("yyyy-MM-dd"))
+                .Should().BeEquivalentTo(new[] { dueA, dueB });
+
+            foreach (var item in commitments.Concat(draft.GetProperty("decisions").EnumerateArray()))
+                transcript.Should().Contain(item.GetProperty("sourceEvidence").GetString());
         }
+    }
 
-        var gen = await client.PostAsync($"/api/meetings/{meetingId}/generate-draft", null);
-        gen.EnsureSuccessStatusCode();
-        var draft = await gen.Content.ReadFromJsonAsync<JsonElement>();
+    [Fact]
+    public async Task Scenario3_failed_task_recovers_on_retry_without_duplicating_tasks()
+    {
+        await using var factory = NewFactory();
+        var client = CreateClient(factory);
+        var meetingId = DemoSeed.FailMeetingId;
+        var draft = await GenerateAsync(client, meetingId);
+        draft.GetProperty("commitments").GetArrayLength().Should().Be(2);
 
-        var commitments = draft.GetProperty("commitments").EnumerateArray().Select(c => new DraftCommitmentEdit
+        var first = await PublishAsync(client, meetingId, new PublishRequest
         {
-            Id = c.GetProperty("id").GetGuid(),
-            Action = c.GetProperty("action").GetString()!,
-            SuggestedOwner = "Alex Morgan",
-            SuggestedDueDate = DateTime.UtcNow.Date.AddDays(5),
-            SourceEvidence = c.GetProperty("sourceEvidence").GetString()!,
-            ReviewStatus = "Approved",
-            NeedsReview = false
-        }).ToList();
-
-        var decisions = draft.GetProperty("decisions").EnumerateArray().Select(d => new DraftDecisionEdit
-        {
-            Id = d.GetProperty("id").GetGuid(),
-            Statement = d.GetProperty("statement").GetString()!,
-            Context = d.GetProperty("context").GetString()!,
-            SourceEvidence = d.GetProperty("sourceEvidence").GetString()!,
-            ReviewStatus = "Approved"
-        }).ToList();
-
-        await client.PutAsJsonAsync($"/api/meetings/{meetingId}/draft", new SaveDraftRequest
-        {
-            Summary = draft.GetProperty("summary").GetString()!,
-            Decisions = decisions,
-            Commitments = commitments
+            ExpectedVersion = draft.GetProperty("version").GetString(),
+            Draft = ApproveAll(draft)
         });
 
-        var publish = await client.PostAsJsonAsync($"/api/meetings/{meetingId}/publish", new PublishRequest());
-        var result = await publish.Content.ReadFromJsonAsync<PublishResult>();
-        result!.TasksFailed.Should().BeGreaterThan(0);
-        result.Succeeded.Should().BeFalse();
+        first.Succeeded.Should().BeFalse();
+        first.TasksNewlyCreated.Should().Be(1);
+        first.TasksAlreadyExisting.Should().Be(0);
+        first.TasksFailed.Should().Be(1);
+        var okTask = first.Tasks.Single(t => t.Status == "Created");
+        var failedTask = first.Tasks.Single(t => t.Status == "Failed");
+        okTask.IsNew.Should().BeTrue();
+        failedTask.Action.Should().Be(ScenarioTranscripts.FailOnceAction);
+        failedTask.FailureReason.Should().NotBeNullOrWhiteSpace();
 
-        var list = await (await client.GetAsync("/api/commitments")).Content.ReadAsStringAsync();
-        list.Should().Contain("Failed");
+        var retry = await PublishAsync(client, meetingId, new PublishRequest { ForceRetryFailedTasks = true });
 
-        // Retry: still fails for FAIL_DESTINATION (idempotent, visible)
-        var retry = await client.PostAsJsonAsync($"/api/meetings/{meetingId}/publish", new PublishRequest { ForceRetryFailedTasks = true });
-        var retryResult = await retry.Content.ReadFromJsonAsync<PublishResult>();
-        retryResult!.TasksFailed.Should().BeGreaterThan(0);
+        retry.Succeeded.Should().BeTrue();
+        retry.TasksNewlyCreated.Should().Be(1);
+        retry.TasksAlreadyExisting.Should().Be(1);
+        retry.TasksFailed.Should().Be(0);
+        retry.Tasks.Should().OnlyContain(t => t.Status == "Created");
+        retry.Tasks.Single(t => t.CommitmentId == okTask.CommitmentId).TaskId.Should().Be(okTask.TaskId);
+        retry.Tasks.Single(t => t.CommitmentId == failedTask.CommitmentId).TaskId.Should().Be(failedTask.TaskId);
+
+        var again = await PublishAsync(client, meetingId, new PublishRequest { ForceRetryFailedTasks = true });
+
+        again.TasksNewlyCreated.Should().Be(0);
+        again.TasksAlreadyExisting.Should().Be(2);
+        again.TasksFailed.Should().Be(0);
+
+        var db = OpenDb(factory);
+        var tasks = await db.DestinationTasks.Where(t => t.Commitment.MeetingId == meetingId).ToListAsync();
+        tasks.Should().HaveCount(2);
+        tasks.Should().OnlyContain(t => t.Status == TaskDestinationStatus.Created);
+
+        (await client.GetStringAsync("/api/audit")).Should().Contain("RetryFailedTasks");
     }
 
     [Fact]
@@ -403,15 +466,6 @@ public class WorkflowTests
         fail.Succeeded.Should().BeFalse();
         fail.FailureReason.Should().NotBeNullOrWhiteSpace();
     }
-}
-
-internal static class ScenarioMini
-{
-    public const string FailTranscript = """
-Jordan: Confirmed decision: Use the local task repository for pilot publishing only.
-Alex Morgan will document the pilot publish checklist by 21 November 2026.
-Also FAIL_DESTINATION: Sync approved pilot records to imaginary ERP queue immediately. Owner Sam Patel due 15 November 2026.
-""";
 }
 
 /// <summary>Helper mirroring meeting create validation.</summary>

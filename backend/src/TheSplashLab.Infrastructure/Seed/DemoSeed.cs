@@ -522,9 +522,25 @@ public static class DemoSeed
     }
 }
 
-internal static class ScenarioTranscripts
+/// <summary>
+/// Single source of truth for the scripted scenarios: the transcripts below and the mock extractor
+/// both read these constants, so extracted dates and quoted evidence always match the transcript.
+/// </summary>
+public static class ScenarioTranscripts
 {
-    public const string CompleteMeeting = """
+    public const string SampleDueText = "17 November 2026";
+    public const string SampleDueIso = "2026-11-17";
+    public const string QuoteDueText = "14 November 2026";
+    public const string QuoteDueIso = "2026-11-14";
+    public const string ChecklistDueText = "21 November 2026";
+    public const string ChecklistDueIso = "2026-11-21";
+    public const string RunbookDueText = "24 November 2026";
+    public const string RunbookDueIso = "2026-11-24";
+
+    /// <summary>Scenario 3 action whose task destination fails on the first attempt only.</summary>
+    public const string FailOnceAction = "Post the pilot runbook to the shared Operations site.";
+
+    public const string CompleteMeeting = $"""
 Meeting: UK Sample Coordination — Quotation Follow-up
 Date: 10 November 2026
 Attendees: Jordan Lee (Operations), Alex Morgan (Operations), Priya Shah (Sales)
@@ -536,11 +552,11 @@ Priya: The architect asked for matte black finish samples and a revised quotatio
 Jordan: Agreed. We will proceed with sending matte black finish samples to the Riverside project architect.
 Decision confirmed: Send matte black finish samples for the Riverside project.
 
-Alex: I will prepare the sample pack and courier it. Owner is Alex Morgan. Due date is 17 November 2026.
+Alex: I will prepare the sample pack and courier it. Owner is Alex Morgan. Due date is {SampleDueText}.
 
-Priya: I will update the quotation with the revised finish pricing and send it to the architect. Owner is Priya Shah. Due date is 14 November 2026.
+Priya: I will update the quotation with the revised finish pricing and send it to the architect. Owner is Priya Shah. Due date is {QuoteDueText}.
 
-Jordan: Perfect. Two commitments: Alex owns sample courier by 17 November 2026; Priya owns revised quotation by 14 November 2026.
+Jordan: Perfect. Two commitments: Alex owns sample courier by {SampleDueText}; Priya owns revised quotation by {QuoteDueText}.
 
 Alex: No open blockers from operations side.
 """;
@@ -561,20 +577,20 @@ Alex: We also wondered whether to escalate the lead-time question to the US ware
 Chris: Let's park the comparison board idea until we clarify ownership.
 """;
 
-    public const string FailDestinationMeeting = """
+    public const string FailDestinationMeeting = $"""
 Meeting: Project Kickoff — Destination Adapter Stress Case
 Date: 14 November 2026
 Attendees: Jordan Lee, Alex Morgan, Sam Patel
 
-Jordan: For the demo stress case we will approve one valid commitment and intentionally reject a weak AI suggestion.
+Jordan: For the demo stress case we will approve two valid commitments and let the task destination fail once on the second, so the retry path can be shown.
 
 Alex: Confirmed decision: Use the local task repository for pilot publishing only.
 
-Jordan: Commitment one — Alex Morgan will document the pilot publish checklist by 21 November 2026.
+Jordan: Commitment one — Alex Morgan will document the pilot publish checklist by {ChecklistDueText}.
 
-Sam: There was also a vague suggestion to sync everything to an imaginary ERP queue immediately, which we should reject.
+Sam: Commitment two — Sam Patel will post the pilot runbook to the shared Operations site by {RunbookDueText}.
 
-Jordan: Correct. Reject any action that invents an ERP write. We will also exercise a simulated task destination failure for the retry path using the special marker FAIL_DESTINATION in the commitment title when testing.
+Jordan: The simulated destination fails the first time it receives the runbook task. Retrying is safe and must not duplicate the checklist task.
 """;
 
     public const string PriorPublishedMeeting = """

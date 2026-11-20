@@ -110,6 +110,14 @@ public class MeetingsController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = meeting.Id }, new { meeting.Id, meeting.Title });
     }
 
+    [HttpPost("demo-scenario")]
+    [Authorize(Policy = "Reviewer")]
+    public async Task<IActionResult> StartFreshDemoScenario(CancellationToken ct = default)
+    {
+        await _workflow.ResetDemoScenarioAsync(ct);
+        return Ok(new { reset = true });
+    }
+
     [HttpPost("{id:guid}/generate-draft")]
     public async Task<IActionResult> GenerateDraft(Guid id, CancellationToken ct = default)
     {
@@ -133,6 +141,10 @@ public class MeetingsController : ControllerBase
             var draft = await _workflow.SaveDraftAsync(id, request, ct);
             return Ok(MapDraft(draft));
         }
+        catch (DraftConflictException ex)
+        {
+            return await ConflictResponse(id, ex, ct);
+        }
         catch (UnauthorizedAccessException ex)
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
@@ -154,6 +166,10 @@ public class MeetingsController : ControllerBase
                 return BadRequest(result);
             return Ok(result);
         }
+        catch (DraftConflictException ex)
+        {
+            return await ConflictResponse(id, ex, ct);
+        }
         catch (UnauthorizedAccessException ex)
         {
             return StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message });
@@ -164,10 +180,21 @@ public class MeetingsController : ControllerBase
         }
     }
 
+    private async Task<IActionResult> ConflictResponse(Guid meetingId, DraftConflictException ex, CancellationToken ct)
+    {
+        var meeting = await _meetings.GetMeetingAsync(meetingId, ct);
+        return StatusCode(StatusCodes.Status409Conflict, new
+        {
+            error = ex.Message,
+            currentDraft = meeting?.Draft is null ? null : MapDraft(meeting.Draft)
+        });
+    }
+
     private static object MapDraft(Core.Entities.MeetingDraft d) => new
     {
         d.Id,
         d.MeetingId,
+        Version = MeetingWorkflowService.VersionOf(d),
         d.Summary,
         DiscussionPoints = JsonSerializer.Deserialize<List<string>>(d.DiscussionPointsJson) ?? new(),
         d.ProviderName,

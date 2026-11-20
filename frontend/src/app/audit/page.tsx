@@ -22,9 +22,14 @@ export default function AuditPage() {
   const [items, setItems] = useState<Audit[]>([]);
   const [error, setError] = useState("");
 
+  const [meetingId, setMeetingId] = useState("");
+
   useEffect(() => {
+    setMeetingId(new URLSearchParams(window.location.search).get("meetingId") || "");
     api.get<Audit[]>("/api/audit").then(setItems).catch((e) => setError(errMessage(e)));
   }, []);
+
+  const visible = meetingId ? items.filter((a) => a.meetingId === meetingId) : items;
 
   return (
     <div className="stack">
@@ -33,6 +38,14 @@ export default function AuditPage() {
         lede="Append-only history of who did what, when, and whether it succeeded. Credentials and tokens are never logged."
       />
       {error && <div className="error">{error}</div>}
+      {meetingId && (
+        <div className="notice">
+          Showing audit records for meeting {meetingId.slice(0, 8)}.{" "}
+          <a href="/audit" onClick={(e) => { e.preventDefault(); setMeetingId(""); window.history.replaceState(null, "", "/audit"); }}>
+            Show all
+          </a>
+        </div>
+      )}
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -41,7 +54,7 @@ export default function AuditPage() {
             </tr>
           </thead>
           <tbody>
-            {items.map((a) => (
+            {visible.map((a) => (
               <tr key={a.id}>
                 <td>{new Date(a.occurredAtUtc).toLocaleString()}</td>
                 <td>{a.actorName}</td>

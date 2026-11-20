@@ -48,6 +48,8 @@ public class ExtractionRequest
 
 public class SaveDraftRequest
 {
+    /// <summary>Draft version the reviewer last saw; a mismatch means another reviewer changed the draft.</summary>
+    public string? ExpectedVersion { get; set; }
     public string Summary { get; set; } = string.Empty;
     public List<string> DiscussionPoints { get; set; } = new();
     public List<DraftDecisionEdit> Decisions { get; set; } = new();
@@ -90,17 +92,51 @@ public class DraftIssueEdit
 public class PublishRequest
 {
     public bool ForceRetryFailedTasks { get; set; }
+
+    /// <summary>Draft version the reviewer last saw. Checked before any edit or publish is applied.</summary>
+    public string? ExpectedVersion { get; set; }
+
+    /// <summary>On-screen draft edits applied atomically before publishing, so no separate save is needed.</summary>
+    public SaveDraftRequest? Draft { get; set; }
 }
 
 public class PublishResult
 {
     public bool Succeeded { get; set; }
     public string Message { get; set; } = string.Empty;
+    public Guid MeetingId { get; set; }
+    public string DraftVersion { get; set; } = string.Empty;
     public int DecisionsPublished { get; set; }
     public int CommitmentsPublished { get; set; }
+
+    /// <summary>Tasks that exist after this run: <see cref="TasksNewlyCreated"/> + <see cref="TasksAlreadyExisting"/>.</summary>
     public int TasksCreated { get; set; }
+    public int TasksNewlyCreated { get; set; }
+    public int TasksAlreadyExisting { get; set; }
     public int TasksFailed { get; set; }
+    public List<PublishedTaskDto> Tasks { get; set; } = new();
     public List<string> Errors { get; set; } = new();
+}
+
+public class PublishedTaskDto
+{
+    public Guid CommitmentId { get; set; }
+    public string Action { get; set; } = string.Empty;
+    public string Owner { get; set; } = string.Empty;
+    public DateTime? DueDate { get; set; }
+    public Guid? TaskId { get; set; }
+    public string ExternalTaskId { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public bool IsNew { get; set; }
+    public string? FailureReason { get; set; }
+}
+
+public class DraftConflictException : Exception
+{
+    public DraftConflictException()
+        : base("Another reviewer changed this draft after you opened it. Reload the latest draft before publishing.")
+    {
+    }
 }
 
 public class CreateMeetingRequest

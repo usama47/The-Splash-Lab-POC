@@ -12,6 +12,7 @@ export default function MeetingsPage() {
   const [organizer, setOrganizer] = useState("Alex Morgan");
   const [transcript, setTranscript] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
 
   async function load() {
     try {
@@ -22,6 +23,20 @@ export default function MeetingsPage() {
   }
 
   useEffect(() => { load(); }, []);
+
+  async function startFresh() {
+    if (!window.confirm("This deletes ALL data (including pasted/uploaded meetings, drafts, registers and the audit trail) and restores the original demo data. Continue?")) return;
+    setError("");
+    setBusy(true);
+    try {
+      await api.post("/api/meetings/demo-scenario");
+      await load();
+    } catch (err: unknown) {
+      setError(errMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onPaste(e: FormEvent) {
     e.preventDefault();
@@ -66,6 +81,11 @@ export default function MeetingsPage() {
       <PageHeader
         title="Meetings"
         lede="Pilot department: Operations. Use the three seeded scenarios for the live walkthrough, or paste/upload a transcript."
+        actions={
+          <button className="primary" disabled={busy} onClick={startFresh}>
+            Start a fresh demo scenario
+          </button>
+        }
       />
       {error && <div className="error">{error}</div>}
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>

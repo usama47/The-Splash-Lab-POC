@@ -6,6 +6,7 @@ using TheSplashLab.Core.Interfaces;
 using TheSplashLab.Core.Models;
 using TheSplashLab.Infrastructure.Data;
 using TheSplashLab.Infrastructure.Repositories;
+using TheSplashLab.Infrastructure.Seed;
 
 namespace TheSplashLab.Infrastructure.Services;
 
@@ -81,9 +82,11 @@ public class MeetingWorkflowService
         draft.UpdatedAtUtc = DateTime.UtcNow;
         draft.LastEditedByUserId = _user.UserId;
 
+        // Items go through their DbSets (not draft.X.Add): with client-assigned Guid keys, EF treats items added
+        // via a tracked parent's collection as existing rows and issues an UPDATE that affects 0 rows.
         foreach (var d in extraction.Decisions)
         {
-            draft.Decisions.Add(new DraftDecision
+            _db.DraftDecisions.Add(new DraftDecision
             {
                 Id = Guid.NewGuid(),
                 MeetingDraftId = draft.Id,
@@ -97,7 +100,7 @@ public class MeetingWorkflowService
 
         foreach (var c in extraction.Commitments)
         {
-            draft.Commitments.Add(new DraftCommitment
+            _db.DraftCommitments.Add(new DraftCommitment
             {
                 Id = Guid.NewGuid(),
                 MeetingDraftId = draft.Id,
@@ -113,7 +116,7 @@ public class MeetingWorkflowService
 
         foreach (var i in extraction.OpenIssues)
         {
-            draft.Issues.Add(new DraftIssue
+            _db.DraftIssues.Add(new DraftIssue
             {
                 Id = Guid.NewGuid(),
                 MeetingDraftId = draft.Id,
@@ -131,7 +134,7 @@ public class MeetingWorkflowService
 
         await _audit.RecordAsync(
             _user.DisplayName, _user.UserId, "GenerateDraft", "MeetingDraft", draft.Id.ToString(),
-            meeting.Id, null, $"Provider={extraction.ProviderName}; decisions={draft.Decisions.Count}; commitments={draft.Commitments.Count}",
+            meeting.Id, null, $"Provider={extraction.ProviderName}; decisions={extraction.Decisions.Count}; commitments={extraction.Commitments.Count}",
             true, null, ct);
 
         return await LoadDraftAsync(draft.Id, ct);
@@ -154,8 +157,33 @@ public class MeetingWorkflowService
             throw new InvalidOperationException("Published drafts cannot be edited.");
 
         var draft = meeting.Draft;
+        EnsureVersion(draft, request.ExpectedVersion);
         var before = JsonSerializer.Serialize(new { draft.Summary, Decisions = draft.Decisions.Count, Commitments = draft.Commitments.Count });
 
+        ApplyDraftEdits(draft, request);
+
+        meeting.WorkflowStatus = MeetingWorkflowStatus.InReview;
+        meeting.UpdatedAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        await _audit.RecordAsync(
+            _user.DisplayName, _user.UserId, "SaveDraft", "MeetingDraft", draft.Id.ToString(),
+            meeting.Id, before, JsonSerializer.Serialize(new { draft.Summary, Decisions = draft.Decisions.Count, Commitments = draft.Commitments.Count }),
+            true, null, ct);
+
+        return await LoadDraftAsync(draft.Id, ct);
+    }
+
+    public static string VersionOf(MeetingDraft draft) => (draft.UpdatedAtUtc ?? draft.CreatedAtUtc).Ticks.ToString();
+
+    private static void EnsureVersion(MeetingDraft draft, string? expectedVersion)
+    {
+        if (!string.IsNullOrEmpty(expectedVersion) && expectedVersion != VersionOf(draft))
+            throw new DraftConflictException();
+    }
+
+    private void ApplyDraftEdits(MeetingDraft draft, SaveDraftRequest request)
+    {
         draft.Summary = request.Summary.Trim();
         draft.DiscussionPointsJson = JsonSerializer.Serialize(request.DiscussionPoints ?? new());
         draft.UpdatedAtUtc = DateTime.UtcNow;
@@ -170,7 +198,7 @@ public class MeetingWorkflowService
 
         foreach (var d in request.Decisions ?? new())
         {
-            draft.Decisions.Add(new DraftDecision
+            _db.DraftDecisions.Add(new DraftDecision
             {
                 Id = d.Id ?? Guid.NewGuid(),
                 MeetingDraftId = draft.Id,
@@ -196,7 +224,7 @@ public class MeetingWorkflowService
                 status = ItemReviewStatus.NeedsReview;
             }
 
-            draft.Commitments.Add(new DraftCommitment
+            _db.DraftCommitments.Add(new DraftCommitment
             {
                 Id = c.Id ?? Guid.NewGuid(),
                 MeetingDraftId = draft.Id,
@@ -212,7 +240,7 @@ public class MeetingWorkflowService
 
         foreach (var i in request.Issues ?? new())
         {
-            draft.Issues.Add(new DraftIssue
+            _db.DraftIssues.Add(new DraftIssue
             {
                 Id = i.Id ?? Guid.NewGuid(),
                 MeetingDraftId = draft.Id,
@@ -224,16 +252,6 @@ public class MeetingWorkflowService
             });
         }
 
-        meeting.WorkflowStatus = MeetingWorkflowStatus.InReview;
-        meeting.UpdatedAtUtc = DateTime.UtcNow;
-        await _db.SaveChangesAsync(ct);
-
-        await _audit.RecordAsync(
-            _user.DisplayName, _user.UserId, "SaveDraft", "MeetingDraft", draft.Id.ToString(),
-            meeting.Id, before, JsonSerializer.Serialize(new { draft.Summary, Decisions = draft.Decisions.Count, Commitments = draft.Commitments.Count }),
-            true, null, ct);
-
-        return await LoadDraftAsync(draft.Id, ct);
     }
 
     public async Task<PublishResult> PublishAsync(Guid meetingId, PublishRequest request, CancellationToken ct = default)
@@ -251,7 +269,18 @@ public class MeetingWorkflowService
             throw new InvalidOperationException("No draft to publish.");
 
         var draft = meeting.Draft;
-        var result = new PublishResult();
+        var result = new PublishResult { MeetingId = meeting.Id };
+
+        EnsureVersion(draft, request.ExpectedVersion);
+
+        if (request.Draft is not null)
+        {
+            if (draft.IsPublished)
+                throw new InvalidOperationException("Published drafts cannot be edited.");
+
+            ApplyDraftEdits(draft, request.Draft);
+            meeting.WorkflowStatus = MeetingWorkflowStatus.InReview;
+        }
 
         var approvedDecisions = draft.Decisions.Where(d => d.ReviewStatus == ItemReviewStatus.Approved).ToList();
         var approvedCommitments = draft.Commitments.Where(c => c.ReviewStatus == ItemReviewStatus.Approved).ToList();
@@ -364,6 +393,8 @@ public class MeetingWorkflowService
             if (existingTask is not null && existingTask.Status == TaskDestinationStatus.Created)
             {
                 result.TasksCreated++;
+                result.TasksAlreadyExisting++;
+                result.Tasks.Add(ToTaskDto(commitment, existingTask, isNew: false));
                 continue;
             }
 
@@ -373,6 +404,7 @@ public class MeetingWorkflowService
             {
                 result.TasksFailed++;
                 result.Errors.Add($"Task previously failed for '{commitment.Action}': {existingTask.FailureReason}");
+                result.Tasks.Add(ToTaskDto(commitment, existingTask, isNew: false));
                 continue;
             }
 
@@ -383,16 +415,11 @@ public class MeetingWorkflowService
                 Assignee = commitment.OwnerName,
                 DueDate = commitment.DueDate,
                 IdempotencyKey = taskKey,
+                // Scenario 3 fails exactly once: only the first attempt (no task row yet) is simulated as failing.
                 SimulateFailure = meeting.ScenarioKey == "fail-destination" &&
-                                  commitment.Action.Contains("FAIL_DESTINATION", StringComparison.OrdinalIgnoreCase)
+                                  existingTask is null &&
+                                  string.Equals(commitment.Action, ScenarioTranscripts.FailOnceAction, StringComparison.OrdinalIgnoreCase)
             };
-
-            // Only FAIL_DESTINATION commitments should fail in scenario 3; others succeed
-            if (meeting.ScenarioKey == "fail-destination" &&
-                !commitment.Action.Contains("FAIL_DESTINATION", StringComparison.OrdinalIgnoreCase))
-            {
-                createReq.SimulateFailure = false;
-            }
 
             var taskResult = await _tasks.CreateTaskAsync(createReq, ct);
 
@@ -419,6 +446,8 @@ public class MeetingWorkflowService
                 existingTask.FailureReason = null;
                 existingTask.UpdatedAtUtc = DateTime.UtcNow;
                 result.TasksCreated++;
+                result.TasksNewlyCreated++;
+                result.Tasks.Add(ToTaskDto(commitment, existingTask, isNew: true));
             }
             else
             {
@@ -427,6 +456,7 @@ public class MeetingWorkflowService
                 existingTask.UpdatedAtUtc = DateTime.UtcNow;
                 result.TasksFailed++;
                 result.Errors.Add(taskResult.FailureReason ?? "Task destination failed.");
+                result.Tasks.Add(ToTaskDto(commitment, existingTask, isNew: false));
             }
         }
 
@@ -469,13 +499,14 @@ public class MeetingWorkflowService
 
         await _db.SaveChangesAsync(ct);
 
+        result.DraftVersion = VersionOf(draft);
         result.Succeeded = result.TasksFailed == 0;
         result.Message = result.Succeeded
             ? "Published successfully."
             : "Published with task destination failures. Retry is safe (idempotent).";
 
         await _audit.RecordAsync(
-            _user.DisplayName, _user.UserId, "PublishDraft", "Meeting", meeting.Id.ToString(),
+            _user.DisplayName, _user.UserId, request.ForceRetryFailedTasks ? "RetryFailedTasks" : "PublishDraft", "Meeting", meeting.Id.ToString(),
             meeting.Id, null,
             JsonSerializer.Serialize(result),
             result.Succeeded,
@@ -530,6 +561,37 @@ public class MeetingWorkflowService
         return commitment;
     }
 
+    // Full reset: deletes every row (children before parents) and re-runs the demo seed, so all seeded data
+    // (users, meetings, registers, issues, knowledge, integrations, audit) comes back exactly as on first start.
+    public async Task ResetDemoScenarioAsync(CancellationToken ct = default)
+    {
+        await using (var tx = await _db.Database.BeginTransactionAsync(ct))
+        {
+            await _db.CommitmentStatusHistories.ExecuteDeleteAsync(ct);
+            await _db.DestinationTasks.ExecuteDeleteAsync(ct);
+            await _db.Commitments.ExecuteDeleteAsync(ct);
+            await _db.Decisions.ExecuteDeleteAsync(ct);
+            await _db.Issues.ExecuteDeleteAsync(ct);
+            await _db.DraftDecisions.ExecuteDeleteAsync(ct);
+            await _db.DraftCommitments.ExecuteDeleteAsync(ct);
+            await _db.DraftIssues.ExecuteDeleteAsync(ct);
+            await _db.MeetingDrafts.ExecuteDeleteAsync(ct);
+            await _db.Meetings.ExecuteDeleteAsync(ct);
+            await _db.ProcessRegister.ExecuteDeleteAsync(ct);
+            await _db.KnowledgeArticles.ExecuteDeleteAsync(ct);
+            await _db.IntegrationSettings.ExecuteDeleteAsync(ct);
+            await _db.AuditLogs.ExecuteDeleteAsync(ct);
+            await _db.Users.ExecuteDeleteAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+
+        _db.ChangeTracker.Clear();
+        await DemoSeed.EnsureSeededAsync(_db);
+
+        await _audit.RecordAsync(_user.DisplayName, _user.UserId, "StartFreshDemoScenario", "Database",
+            null, null, null, "All data deleted and re-seeded", true, null, ct);
+    }
+
     public async Task<DashboardDto> GetDashboardAsync(CancellationToken ct = default)
     {
         var meetings = await _db.Meetings.AsNoTracking().ToListAsync(ct);
@@ -566,6 +628,19 @@ public class MeetingWorkflowService
             .Include(d => d.Issues)
             .Include(d => d.Meeting)
             .FirstAsync(d => d.Id == draftId, ct);
+
+    private static PublishedTaskDto ToTaskDto(CommitmentRecord commitment, DestinationTask task, bool isNew) => new()
+    {
+        CommitmentId = commitment.Id,
+        Action = commitment.Action,
+        Owner = commitment.OwnerName,
+        DueDate = commitment.DueDate,
+        TaskId = task.Id,
+        ExternalTaskId = task.ExternalTaskId,
+        Status = task.Status.ToString(),
+        IsNew = isNew,
+        FailureReason = task.FailureReason
+    };
 
     private void RequireReviewer()
     {

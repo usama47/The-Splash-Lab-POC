@@ -29,10 +29,8 @@ public class MockAiExtractionService : IAiExtractionService
 
     private static AiExtractionPayload CompletePayload()
     {
-        // Relative dates keep the live demo showing Open + one near-term item instead of everything Overdue.
-        var sampleDue = DateTime.UtcNow.Date.AddDays(5);
-        var quoteDue = DateTime.UtcNow.Date.AddDays(-1); // deliberately overdue for dashboard metric
-
+        // Dates and quoted evidence come from ScenarioTranscripts, the same constants the transcript is built from,
+        // so regenerating always yields the dates written in the transcript.
         return new()
         {
             Summary = "Operations and Sales aligned on Riverside sample and quotation follow-up. Matte black samples will be sent and the quotation will be revised.",
@@ -58,16 +56,16 @@ public class MockAiExtractionService : IAiExtractionService
                 {
                     Action = "Prepare and courier the matte black sample pack to the Riverside project architect.",
                     SuggestedOwner = "Alex Morgan",
-                    SuggestedDueDate = sampleDue.ToString("yyyy-MM-dd"),
-                    SourceEvidence = $"Owner is Alex Morgan. Due date is {sampleDue:dd MMMM yyyy}.",
+                    SuggestedDueDate = ScenarioTranscripts.SampleDueIso,
+                    SourceEvidence = $"Owner is Alex Morgan. Due date is {ScenarioTranscripts.SampleDueText}.",
                     NeedsReview = false
                 },
                 new()
                 {
                     Action = "Update the quotation with revised finish pricing and send it to the architect.",
                     SuggestedOwner = "Priya Shah",
-                    SuggestedDueDate = quoteDue.ToString("yyyy-MM-dd"),
-                    SourceEvidence = $"Owner is Priya Shah. Due date is {quoteDue:dd MMMM yyyy}.",
+                    SuggestedDueDate = ScenarioTranscripts.QuoteDueIso,
+                    SourceEvidence = $"Owner is Priya Shah. Due date is {ScenarioTranscripts.QuoteDueText}.",
                     NeedsReview = false
                 }
             },
@@ -120,17 +118,14 @@ public class MockAiExtractionService : IAiExtractionService
 
     private static AiExtractionPayload FailDestinationPayload()
     {
-        var checklistDue = DateTime.UtcNow.Date.AddDays(7);
-        var failDue = DateTime.UtcNow.Date.AddDays(2);
-
         return new()
         {
-            Summary = "Pilot team confirmed local task repository usage and captured a publish checklist commitment, plus a weak ERP suggestion that should be rejected.",
+            Summary = "Pilot team confirmed local task repository usage and captured two commitments: a publish checklist and a pilot runbook. The simulated destination fails the runbook task once so the retry path can be shown.",
             DiscussionPoints = new List<string>
             {
                 "Use local task repository for pilot publishing only.",
                 "Document pilot publish checklist.",
-                "Reject invented ERP write actions."
+                "Post the pilot runbook to the shared Operations site."
             },
             Decisions = new List<AiDecisionPayload>
             {
@@ -148,18 +143,17 @@ public class MockAiExtractionService : IAiExtractionService
                 {
                     Action = "Document the pilot publish checklist.",
                     SuggestedOwner = "Alex Morgan",
-                    SuggestedDueDate = checklistDue.ToString("yyyy-MM-dd"),
-                    SourceEvidence = $"Alex Morgan will document the pilot publish checklist by {checklistDue:dd MMMM yyyy}.",
+                    SuggestedDueDate = ScenarioTranscripts.ChecklistDueIso,
+                    SourceEvidence = $"Alex Morgan will document the pilot publish checklist by {ScenarioTranscripts.ChecklistDueText}.",
                     NeedsReview = false
                 },
                 new()
                 {
-                    Action = "FAIL_DESTINATION: Sync approved pilot records to imaginary ERP queue immediately.",
+                    Action = ScenarioTranscripts.FailOnceAction,
                     SuggestedOwner = "Sam Patel",
-                    SuggestedDueDate = failDue.ToString("yyyy-MM-dd"),
-                    SourceEvidence = "vague suggestion to sync everything to an imaginary ERP queue immediately",
-                    NeedsReview = true,
-                    NeedsReviewReason = "Action invents an ERP write outside POC scope."
+                    SuggestedDueDate = ScenarioTranscripts.RunbookDueIso,
+                    SourceEvidence = $"Sam Patel will post the pilot runbook to the shared Operations site by {ScenarioTranscripts.RunbookDueText}.",
+                    NeedsReview = false
                 }
             },
             OpenIssues = new List<AiIssuePayload>()

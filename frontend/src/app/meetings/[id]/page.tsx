@@ -1,10 +1,16 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { DraftItem, MeetingDetail, api, errMessage } from "@/lib/api";
+import { ApiError, DraftItem, MeetingDetail, PublishResult, api, errMessage } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
 import Link from "next/link";
+import { toast } from "@/components/Toaster";
+
+function publishToast(res: PublishResult) {
+  if (res.succeeded) toast("Published successfully.");
+  else toast("Published with some errors.", "warning");
+}
 
 type Editable = {
   summary: string;
@@ -17,12 +23,13 @@ type Editable = {
 export default function MeetingDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const router = useRouter();
   const [meeting, setMeeting] = useState<MeetingDetail | null>(null);
   const [edit, setEdit] = useState<Editable | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<PublishResult | null>(null);
+  const [conflict, setConflict] = useState("");
 
   async function load() {
     const m = await api.get<MeetingDetail>(`/api/meetings/${id}`);
@@ -52,58 +59,95 @@ export default function MeetingDetailPage() {
     finally { setBusy(false); }
   }
 
+  function draftPayload(e: Editable) {
+    return {
+      summary: e.summary,
+      discussionPoints: e.discussionPoints,
+      decisions: e.decisions.map((d) => ({
+        id: d.id,
+        statement: d.statement,
+        context: d.context,
+        sourceEvidence: d.sourceEvidence,
+        reviewStatus: d.reviewStatus,
+        needsReview: d.needsReview,
+      })),
+      commitments: e.commitments.map((c) => ({
+        id: c.id,
+        action: c.action,
+        suggestedOwner: c.suggestedOwner || null,
+        suggestedDueDate: c.suggestedDueDate || null,
+        sourceEvidence: c.sourceEvidence,
+        reviewStatus: c.reviewStatus,
+        needsReview: c.needsReview,
+        needsReviewReason: c.needsReviewReason,
+      })),
+      issues: e.issues.map((i) => ({
+        id: i.id,
+        title: i.title,
+        description: i.description,
+        sourceEvidence: i.sourceEvidence,
+        reviewStatus: i.reviewStatus,
+        needsReview: i.needsReview,
+      })),
+    };
+  }
+
+  function showConflict(e: unknown): boolean {
+    if (e instanceof ApiError && e.status === 409) {
+      setConflict(e.message);
+      return true;
+    }
+    return false;
+  }
+
   async function saveDraft() {
-    if (!edit) return;
-    setBusy(true); setError(""); setMessage("");
+    if (!edit || !meeting?.draft) return;
+    setBusy(true); setError(""); setMessage(""); setConflict("");
     try {
       await api.put(`/api/meetings/${id}/draft`, {
-        summary: edit.summary,
-        discussionPoints: edit.discussionPoints,
-        decisions: edit.decisions.map((d) => ({
-          id: d.id,
-          statement: d.statement,
-          context: d.context,
-          sourceEvidence: d.sourceEvidence,
-          reviewStatus: d.reviewStatus,
-          needsReview: d.needsReview,
-        })),
-        commitments: edit.commitments.map((c) => ({
-          id: c.id,
-          action: c.action,
-          suggestedOwner: c.suggestedOwner,
-          suggestedDueDate: c.suggestedDueDate,
-          sourceEvidence: c.sourceEvidence,
-          reviewStatus: c.reviewStatus,
-          needsReview: c.needsReview,
-          needsReviewReason: c.needsReviewReason,
-        })),
-        issues: edit.issues.map((i) => ({
-          id: i.id,
-          title: i.title,
-          description: i.description,
-          sourceEvidence: i.sourceEvidence,
-          reviewStatus: i.reviewStatus,
-          needsReview: i.needsReview,
-        })),
+        ...draftPayload(edit),
+        expectedVersion: meeting.draft.version,
       });
       await load();
       setMessage("Draft saved (not published).");
+    } catch (e: unknown) { if (!showConflict(e)) setError(errMessage(e)); }
+    finally { setBusy(false); }
+  }
+
+  // Sends the on-screen edits with the publish request, so no separate save is needed.
+  async function publish() {
+    if (!edit || !meeting?.draft) return;
+    setBusy(true); setError(""); setMessage(""); setConflict(""); setResult(null);
+    try {
+      const res = await api.post<PublishResult>(`/api/meetings/${id}/publish`, {
+        forceRetryFailedTasks: false,
+        expectedVersion: meeting.draft.version,
+        draft: draftPayload(edit),
+      });
+      setResult(res);
+      publishToast(res);
+      await load();
+    } catch (e: unknown) { if (!showConflict(e)) setError(errMessage(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function retryFailed() {
+    setBusy(true); setError(""); setMessage(""); setConflict("");
+    try {
+      const res = await api.post<PublishResult>(`/api/meetings/${id}/publish`, { forceRetryFailedTasks: true });
+      setResult(res);
+      publishToast(res);
+      await load();
     } catch (e: unknown) { setError(errMessage(e)); }
     finally { setBusy(false); }
   }
 
-  async function publish(forceRetry = false) {
-    setBusy(true); setError(""); setMessage("");
+  async function reloadLatest() {
+    setConflict(""); setError(""); setResult(null);
     try {
-      const result = await api.post<{ succeeded: boolean; message: string; tasksFailed: number; errors: string[] }>(
-        `/api/meetings/${id}/publish`,
-        { forceRetryFailedTasks: forceRetry }
-      );
       await load();
-      setMessage(result.message + (result.errors?.length ? ` ${result.errors.join(" ")}` : ""));
-      if (result.succeeded) router.push("/commitments");
+      setMessage("Loaded the latest draft from the server. Your unsaved on-screen changes were replaced.");
     } catch (e: unknown) { setError(errMessage(e)); }
-    finally { setBusy(false); }
   }
 
   function setDecision(i: number, patch: Partial<DraftItem>) {
@@ -165,6 +209,69 @@ export default function MeetingDetailPage() {
       {error && <div className="error">{error}</div>}
       {message && <div className="notice">{message}</div>}
 
+      {conflict && (
+        <div className="error stack">
+          <strong>Conflict — nothing was published.</strong>
+          <span>{conflict}</span>
+          <div className="form-actions">
+            <button className="primary" onClick={reloadLatest}>Reload latest draft</button>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <div className="panel stack">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h2 className="panel-title" style={{ margin: 0 }}>Publish results</h2>
+            <span className={`badge ${result.succeeded ? "approved" : "rejected"}`}>
+              {result.succeeded ? "All tasks created" : "Retry needed"}
+            </span>
+          </div>
+          <p style={{ margin: 0 }}>{result.message}</p>
+          <div className="grid-cards">
+            <div className="stat"><div className="label">Newly created tasks</div><div className="value">{result.tasksNewlyCreated}</div></div>
+            <div className="stat"><div className="label">Already existed</div><div className="value">{result.tasksAlreadyExisting}</div></div>
+            <div className="stat"><div className="label">Failed</div><div className="value">{result.tasksFailed}</div></div>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr><th>Action</th><th>Owner</th><th>Due</th><th>Task</th><th>Outcome</th><th>Records</th></tr>
+              </thead>
+              <tbody>
+                {result.tasks.map((t) => (
+                  <tr key={t.commitmentId}>
+                    <td>{t.action}</td>
+                    <td>{t.owner}</td>
+                    <td>{t.dueDate ? t.dueDate.substring(0, 10) : "—"}</td>
+                    <td>
+                      {t.externalTaskId || "—"}
+                      {t.taskId && <div className="muted" style={{ fontSize: "0.75rem" }}>ID {t.taskId.slice(0, 8)}</div>}
+                    </td>
+                    <td>
+                      <span className={`badge ${t.status === "Created" ? "approved" : "rejected"}`}>
+                        {t.status === "Created" ? (t.isNew ? "Created now" : "Already existed") : "Failed"}
+                      </span>
+                      {t.failureReason && <div className="muted" style={{ fontSize: "0.78rem" }}>{t.failureReason}</div>}
+                    </td>
+                    <td><Link href={`/commitments#${t.commitmentId}`}>Commitment</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="form-actions">
+            {result.tasksFailed > 0 && (
+              <button className="primary" disabled={busy} onClick={retryFailed}>
+                Retry failed task{result.tasksFailed === 1 ? "" : "s"}
+              </button>
+            )}
+            <Link className="link-btn" href="/commitments">All commitments →</Link>
+            <Link className="link-btn" href={`/audit?meetingId=${result.meetingId}`}>Audit records for this meeting →</Link>
+          </div>
+        </div>
+      )}
+
       <div className="panel">
         <h2 className="panel-title">Source transcript</h2>
         <div className="transcript">{meeting.transcript}</div>
@@ -211,7 +318,7 @@ export default function MeetingDetailPage() {
                 <input value={d.context || ""} onChange={(e) => setDecision(i, { context: e.target.value })} />
               </div>
               <div className="form-actions">
-                <button type="button" onClick={() => setDecision(i, { reviewStatus: "Approved", needsReview: false })}>Approve</button>
+                <button type="button" onClick={() => { setDecision(i, { reviewStatus: "Approved", needsReview: false }); toast("Approved successfully."); }}>Approve</button>
                 <button type="button" onClick={() => setDecision(i, { reviewStatus: "Rejected" })}>Reject</button>
                 <button type="button" onClick={() => setDecision(i, { reviewStatus: "NeedsReview", needsReview: true })}>Needs review</button>
               </div>
@@ -243,7 +350,7 @@ export default function MeetingDetailPage() {
               </div>
               {c.needsReviewReason && <p className="muted" style={{ margin: 0 }}>Reason: {c.needsReviewReason}</p>}
               <div className="form-actions">
-                <button type="button" onClick={() => setCommitment(i, { reviewStatus: "Approved", needsReview: false })}>Approve</button>
+                <button type="button" onClick={() => { setCommitment(i, { reviewStatus: "Approved", needsReview: false }); toast("Approved successfully."); }}>Approve</button>
                 <button type="button" onClick={() => setCommitment(i, { reviewStatus: "Rejected" })}>Reject</button>
               </div>
               <div className="evidence">Evidence: {c.sourceEvidence}</div>
@@ -262,7 +369,7 @@ export default function MeetingDetailPage() {
                 <textarea rows={2} value={issue.description || ""} onChange={(e) => setIssue(i, { description: e.target.value })} />
               </div>
               <div className="form-actions">
-                <button type="button" onClick={() => setIssue(i, { reviewStatus: "Approved" })}>Approve to Issues register</button>
+                <button type="button" onClick={() => { setIssue(i, { reviewStatus: "Approved" }); toast("Approved successfully."); }}>Approve to Issues register</button>
                 <button type="button" onClick={() => setIssue(i, { reviewStatus: "Rejected" })}>Reject</button>
               </div>
               <div className="evidence">Evidence: {issue.sourceEvidence}</div>
@@ -271,8 +378,10 @@ export default function MeetingDetailPage() {
 
           <div className="form-actions">
             <button className="primary" disabled={busy || meeting.draft?.isPublished} onClick={saveDraft}>Save draft</button>
-            <button className="primary" disabled={busy} onClick={() => publish(false)}>Approve & publish</button>
-            <button disabled={busy} onClick={() => publish(true)}>Retry failed tasks</button>
+            <button className="primary" disabled={busy || meeting.draft?.isPublished} onClick={publish}>Approve & publish</button>
+            {meeting.workflowStatus === "PartiallyPublished" && !result && (
+              <button disabled={busy} onClick={retryFailed}>Retry failed tasks</button>
+            )}
           </div>
         </div>
       )}

@@ -26,6 +26,16 @@ export default function CommitmentsPage() {
 
   useEffect(() => { load().catch((e) => setError(errMessage(e))); }, []);
 
+  // Deep link from the publish results panel: /commitments#<commitmentId>
+  const [focusId, setFocusId] = useState("");
+  useEffect(() => {
+    if (items.length === 0) return;
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    setFocusId(hash);
+    document.getElementById(hash)?.scrollIntoView({ block: "center" });
+  }, [items.length]);
+
   async function setStatus(id: string, status: string) {
     setError("");
     try {
@@ -55,7 +65,7 @@ export default function CommitmentsPage() {
             </thead>
             <tbody>
               {items.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} id={c.id} style={c.id === focusId ? { outline: "2px solid #2563eb", outlineOffset: -2 } : undefined}>
                   <td><strong>{c.action}</strong></td>
                   <td>{c.ownerName}</td>
                   <td>{c.dueDate ? new Date(c.dueDate).toLocaleDateString() : "—"}</td>

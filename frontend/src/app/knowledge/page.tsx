@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, errMessage } from "@/lib/api";
 import { PageHeader } from "@/components/PageHeader";
+import { toast } from "@/components/Toaster";
 
 type Article = {
   id: string;
@@ -33,6 +34,7 @@ export default function KnowledgePage() {
   async function approve(id: string, approveFlag: boolean) {
     try {
       await api.post(`/api/knowledge/${id}/approve`, { approve: approveFlag });
+      toast(approveFlag ? "Approved successfully." : "Rejected successfully.");
       await load();
     } catch (e: unknown) { setError(errMessage(e)); }
   }

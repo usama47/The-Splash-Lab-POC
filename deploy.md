@@ -213,7 +213,7 @@ Keep MODE A (`Ai__Provider=Mock`) unless you intentionally enable Claude with Ke
 
 ## Smoke checklist after deploy
 
-1. Open UI URL → Dashboard loads counts (not a CORS/network error).
+1. Open UI URL → Dashboard loads counts (not a CORS/network error). Re-check this before every demo: `NEXT_PUBLIC_API_BASE` and `Cors:AllowedOrigins` must match the current UI/API URLs (tunnel URLs change).
 2. Open `/api/health` on the API → `{ "status": "ok", ... }`.
 3. Meetings list shows seeded scenarios.
 4. Generate Draft → Save → Publish on the UK sample meeting.

@@ -21,8 +21,12 @@ cd frontend
 npm run dev
 ```
 
-**Clean reseed (optional, before a fresh demo):** delete  
-`backend/src/TheSplashLab.Api/Data/splashlab-poc.db*` then restart the API.
+**Rehearse again:** on **Meetings**, click **Start a fresh demo scenario** (Reviewer/Admin only, asks to confirm).  
+It does **not** reset the whole database. It removes pasted/uploaded meetings (and any old `[Rehearsal N]` copies), plus the drafts and decisions/commitments/tasks/issues created from meetings, and sets the three scenario meetings back to **New**. The prior published meeting, other registers and the audit trail are kept (the reset itself is logged).
+
+Full wipe (local only, last resort): stop the API, delete `backend/src/TheSplashLab.Api/Data/splashlab-poc.db*`, restart.
+
+**Pre-demo check (hosted UI):** the UI's `NEXT_PUBLIC_API_BASE` must point at the API, and the UI origin must be in the API's `Cors:AllowedOrigins`. Open the Dashboard and confirm counts load (no CORS/network error) — see `deploy.md`.
 
 **Identity:** stay as **Jordan Lee (Reviewer)** in the left sidebar unless demonstrating RBAC.  
 Sidebar note: switching is **local demo only — not Microsoft Entra**.

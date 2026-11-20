@@ -15,12 +15,33 @@ public class IntegrationsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IAiExtractionService _ai;
     private readonly IMicrosoftGraphIntegration _graph;
+    private readonly IAuditLogService _audit;
+    private readonly ICurrentUserAccessor _user;
 
-    public IntegrationsController(AppDbContext db, IAiExtractionService ai, IMicrosoftGraphIntegration graph)
+    public IntegrationsController(
+        AppDbContext db, IAiExtractionService ai, IMicrosoftGraphIntegration graph,
+        IAuditLogService audit, ICurrentUserAccessor user)
     {
         _db = db;
         _ai = ai;
         _graph = graph;
+        _audit = audit;
+        _user = user;
+    }
+
+    public record ConnectAttemptRequest(string Name);
+
+    // Name goes in the body because integration names contain slashes. Only the click is logged; no credentials.
+    [HttpPost("connect-attempt")]
+    public async Task<IActionResult> LogConnectAttempt([FromBody] ConnectAttemptRequest req, CancellationToken ct)
+    {
+        var setting = await _db.IntegrationSettings.AsNoTracking()
+            .FirstOrDefaultAsync(i => i.Name == req.Name, ct);
+        if (setting is null) return NotFound();
+
+        await _audit.RecordAsync(_user.DisplayName, _user.UserId, "ConnectIntegration", "Integration",
+            setting.Name, null, null, $"Connect started for {setting.Name} ({setting.Status})", true, null, ct);
+        return Ok(new { logged = true });
     }
 
     [HttpGet]
